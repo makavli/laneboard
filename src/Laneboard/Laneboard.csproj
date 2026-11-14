@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Laneboard</AssemblyName>
     <RootNamespace>Laneboard</RootNamespace>
-    <Version>0.6.0</Version>
+    <Version>1.0.0</Version>
     <Product>Laneboard</Product>
     <Description>Every project you are working on, at a glance.</Description>
     <ApplicationIcon>Assets\laneboard.ico</ApplicationIcon>

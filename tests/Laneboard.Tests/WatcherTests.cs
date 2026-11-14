@@ -6,6 +6,7 @@ public class WatcherTests
 {
     [Theory]
     [InlineData(@"src\app.cs", false)]
+    [InlineData(@".git", true)]
     [InlineData(@".git\HEAD", false)]
     [InlineData(@".git\refs\heads\main", false)]
     [InlineData(@".git\FETCH_HEAD", false)]

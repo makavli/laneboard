@@ -57,6 +57,8 @@ public sealed class RepoWatcher : IDisposable
     public static bool Ignored(string rel)
     {
         var r = rel.Replace('/', '\\');
+        // The .git folder's own timestamp moves with every write inside it; HEAD and refs raise their own events.
+        if (r.Equals(".git", StringComparison.OrdinalIgnoreCase)) return true;
         if (r.StartsWith(@".git\", StringComparison.OrdinalIgnoreCase))
             // .git\index is rewritten by every editor's background `git status`; HEAD and refs are what matter.
             return r.StartsWith(@".git\objects", StringComparison.OrdinalIgnoreCase)

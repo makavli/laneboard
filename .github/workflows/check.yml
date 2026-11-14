@@ -1,0 +1,90 @@
+name: check
+
+# The local gate, tools/check.sh (tests, the single-file exe, demo snapshots, the MSIX), on every pull request and on
+# main. The token only reads, except in `release`: on main, once the check passes, a version with no release yet is
+# published with the exe, so merging a pull request that bumps <Version> in src/Laneboard/Laneboard.csproj releases it.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # a run on main may publish a release: let it finish
+
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Pillow, for the Store images
+        run: python -m pip install --disable-pip-version-check pillow==13.0.0
+      - name: tools/check.sh
+        shell: bash
+        run: bash tools/check.sh
+      - name: Version
+        id: version
+        shell: bash
+        run: echo "version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/Laneboard/Laneboard.csproj)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: laneboard-exe
+          path: dist/Laneboard.exe
+          retention-days: 1
+          if-no-files-found: error
+
+  # Every version is released once: tag the merged commit and attach the zipped exe the check just built and tested.
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: laneboard-exe
+      - name: Publish this version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Laneboard.csproj holds an unexpected version: $VERSION"
+            exit 1
+          fi
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "v$VERSION is already released: nothing to do."
+            exit 0
+          fi
+          zip="Laneboard-$VERSION-win-x64.zip"
+          zip -9 -q "$zip" Laneboard.exe
+          sum="$(sha256sum Laneboard.exe | cut -d' ' -f1)"
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Laneboard $VERSION for Windows 10 and 11 (x64).
+
+          Download **$zip**, unzip it anywhere and run \`Laneboard.exe\`: one self-contained file, nothing to install.
+          The file is not signed, so Windows SmartScreen may warn on the first run: choose **More info**, then **Run anyway**.
+
+          SHA-256 of Laneboard.exe: \`$sum\`
+          EOF
+          gh release create "v$VERSION" "$zip" --target "$GITHUB_SHA" --title "Laneboard $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" --generate-notes --latest
