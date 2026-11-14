@@ -7,6 +7,8 @@ Every project you're working on, at a glance: a native Windows 11 app that lives
 - Updates by itself a moment after a file changes in a repository: no refresh button needed
 - Shows open pull requests and their checks, repository visibility, and self-hosted runners, all read through your own GitHub CLI (`gh`)
 - Warns about a public repository with a self-hosted runner, and about GitHub Actions billing you money
+- Notifies you (Windows notifications, can be turned off) when checks fail or pass, a new SAFE POINT is written,
+  or a runner goes offline; a red dot on the tray icon while a project has a problem; projects that need you come first
 - Two views (Light rows or Advanced cards), System/Light/Dark themes, and a glass-to-solid background
 - Opens like a Windows flyout, next to the taskbar on the monitor you clicked
 - Read-only: it never writes to a repository (`git --no-optional-locks`), stores no token, and sends nothing anywhere except `gh` calls

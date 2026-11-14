@@ -47,7 +47,11 @@ public partial class App : Application
         if (args.Contains("--pinned")) { settings.Pinned = true; settings.ReadOnly = true; }
         _win = new MainWindow(settings, demo);
         _tray = new Tray(_win, Quit);
-        _win.SummaryChanged += s => _tray.SetText(s);
+        _win.BoardChanged += (board, alert) =>
+        {
+            _tray.Show(board);
+            if (alert != null) _tray.Notify(alert);
+        };
         new Thread(() => { while (show.WaitOne()) Dispatcher.Invoke(_win.ShowFlyout); }) { IsBackground = true }.Start();
 
         if (!args.Contains("--tray")) _win.ShowFlyout();
