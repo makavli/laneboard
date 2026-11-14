@@ -49,9 +49,15 @@ telemetry. Its only network calls are the `gh` commands it runs under your own s
 
 ## Get it
 
-A Microsoft Store release and a ready-made download are on the way ([ROADMAP.md](ROADMAP.md)). Until then, build it:
-Windows 10 or 11, [Git](https://git-scm.com), the [.NET 10 SDK](https://dotnet.microsoft.com/download), and
-optionally the GitHub CLI.
+Download `Laneboard-<version>-win-x64.zip` from the [latest release](https://github.com/makavli/laneboard/releases/latest),
+unzip it anywhere and run `Laneboard.exe`: one self-contained file for Windows 10 or 11 (x64), nothing to install.
+The first run asks for the folders that hold your projects. It needs [Git](https://git-scm.com); the
+[GitHub CLI](https://cli.github.com), signed in (`gh auth login`), adds checks, pull requests and Actions usage.
+The file is not signed, so Windows SmartScreen may warn on the first run: choose **More info**, then **Run anyway**.
+A Microsoft Store release may come later ([ROADMAP.md](ROADMAP.md)).
+
+To build it yourself: Windows 10 or 11, Git, the [.NET 10 SDK](https://dotnet.microsoft.com/download), and for the
+Store package Python with Pillow and the free Windows SDK.
 
 ```bash
 git clone https://github.com/makavli/laneboard && cd laneboard
@@ -80,6 +86,9 @@ powershell -Command "Get-AppxPackage Laneboard* | Remove-AppxPackage"   # before
 ```
 
 Errors go to `%LOCALAPPDATA%\Laneboard\laneboard.log`.
+
+Every pull request runs the same gate on GitHub ([check.yml](.github/workflows/check.yml)). Merging a new `<Version>`
+in `src/Laneboard/Laneboard.csproj` publishes that version as a release, with the zipped exe the check built.
 
 ## License
 

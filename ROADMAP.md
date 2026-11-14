@@ -10,6 +10,7 @@ Free to make, free to use: everything runs on the user's PC, no server, no accou
 | 0.4 Polish | done | Pin projects · refresh interval · subtle motion · keyboard navigation · accessibility pass |
 | 0.5 Ship-ready | done | MSIX with a startup task and a command alias · Store screenshots · privacy text |
 | 0.6 Public | done | README GIF and screenshots · security audit and bug fixes · MIT license · public repository |
-| 1.0 | planned | CI and ready-made downloads · Store listing images · Microsoft Store |
+| 1.0 | done | CI on every pull request · each new version released with a ready-made download |
+| Later | parked | Store listing images · Microsoft Store |
 
 Out of scope, on purpose: anything that needs a server (team views, sync between PCs).
