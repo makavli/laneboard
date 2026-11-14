@@ -6,8 +6,9 @@ public sealed record Board(
     IReadOnlyList<string> Warnings, string? RunnerChip, string? MinutesChip, bool NeedsUserScope, bool Badge = false)
 {
     public static Board Build(IReadOnlyList<LocalInfo> locals, IReadOnlyDictionary<string, RemoteInfo> remote,
-        AccountInfo? account, bool localRunner, DateTimeOffset now, bool canCode)
+        AccountInfo? account, bool localRunner, DateTimeOffset now, bool canCode, IEnumerable<string>? pinned = null)
     {
+        var pins = new HashSet<string>(pinned ?? [], StringComparer.OrdinalIgnoreCase);
         var views = new List<ProjectView>();
         int prTotal = 0;
         foreach (var l in locals)
@@ -40,13 +41,14 @@ public sealed record Board(
                 l.Handoff?.Snippet is { Length: > 0 } s ? s : null,
                 l.HandoffPath == null ? null : $"{System.IO.Path.GetFileName(l.HandoffPath)}{(l.HandoffTime is { } ht ? " · " + Parse.Ago(now - ht) : "")}",
                 l.Handoff?.SafePoint ?? false, l.HandoffPath, l.Slug, touched, l.Git.Changed, canCode,
-                r?.RunnersOnline ?? 0, r?.RunnersTotal ?? 0));
+                r?.RunnersOnline ?? 0, r?.RunnersTotal ?? 0, pins.Contains(l.Path)));
         }
 
         var sorted = views
             .OrderByDescending(v => v.HasWarnings)
             .ThenByDescending(v => v.HasFailing)
             .ThenByDescending(v => v.SafePoint)
+            .ThenByDescending(v => v.Pinned)
             .ThenByDescending(v => v.LastTouched)
             .ToList();
 

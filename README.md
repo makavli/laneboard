@@ -9,8 +9,11 @@ Every project you're working on, at a glance: a native Windows 11 app that lives
 - Warns about a public repository with a self-hosted runner, and about GitHub Actions billing you money
 - Notifies you (Windows notifications, can be turned off) when checks fail or pass, a new SAFE POINT is written,
   or a runner goes offline; a red dot on the tray icon while a project has a problem; projects that need you come first
+- Pin projects to the top (right click > Pin to top); choose how often GitHub is read (2 to 30 minutes)
 - Two views (Light rows or Advanced cards), System/Light/Dark themes, and a glass-to-solid background
-- Opens like a Windows flyout, next to the taskbar on the monitor you clicked
+- Keyboard first: type to filter at once, Down into the list, arrows between projects, Enter opens one (VS Code or the folder),
+  the menu key or Shift+F10 opens its menu, F5 refreshes, Esc closes. Every button has a name a screen reader can say
+- Opens like a Windows flyout, next to the taskbar on the monitor you clicked, sliding in unless Windows animations are off
 - Read-only: it never writes to a repository (`git --no-optional-locks`), stores no token, and sends nothing anywhere except `gh` calls
 
 Free to use, free to run: no account, no server, no telemetry. Progress: [ROADMAP.md](ROADMAP.md).

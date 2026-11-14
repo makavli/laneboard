@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
@@ -19,11 +21,13 @@ public partial class MainWindow : Window
     DateTime _lastLocal = DateTime.MinValue, _lastRemote = DateTime.MinValue, _hiddenAt = DateTime.MinValue;
     bool _busy, _allowClose, _dialogOpen, _placed, _syncing;
 
-    static readonly TimeSpan RemoteEvery = TimeSpan.FromMinutes(5);
+    TimeSpan RemoteEvery => TimeSpan.FromMinutes(Math.Clamp(_s.GitHubMinutes, 1, 60));
     Board? _board;
+    double _slideFrom = 24; // the flyout rises from the taskbar: from below, or from above when the taskbar is at the top
 
     /// While checks run, GitHub is read every 2 minutes, so "checks passed" arrives soon after they finish.
-    TimeSpan RemoteDue => _views.Any(v => v.WorstState == "pending") ? TimeSpan.FromMinutes(2) : RemoteEvery;
+    TimeSpan RemoteDue => _views.Any(v => v.WorstState == "pending") && RemoteEvery > TimeSpan.FromMinutes(2)
+        ? TimeSpan.FromMinutes(2) : RemoteEvery;
 
     /// Every redraw: the board, and a notification when something worth one changed since the last board.
     public event Action<Board, Alert?>? BoardChanged;
@@ -85,10 +89,13 @@ public partial class MainWindow : Window
 
     public void ShowFlyout()
     {
+        bool opening = !IsVisible;
         if (!_s.Pinned || !_placed) PlaceNearTray();
         Show();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
+        if (opening && !_s.Pinned) Entrance();
+        if (opening && SettingsPanel.Visibility != Visibility.Visible) Search.Focus(); // type to filter at once, like Start
         if (DateTime.UtcNow - _lastLocal > TimeSpan.FromSeconds(20)) _ = RefreshAsync(false);
         else _ = RefreshChangedAsync(); // files that changed while the window was hidden
     }
@@ -103,8 +110,19 @@ public partial class MainWindow : Window
 
     void PlaceNearTray()
     {
-        Backdrop.PlaceNearTray(this, 420, 680);
+        _slideFrom = Backdrop.PlaceNearTray(this, 420, 680) ? -24 : 24;
         _placed = true;
+    }
+
+    /// The flyout slides in from the taskbar and fades up, as Windows' own flyouts do; none when animations are off.
+    void Entrance()
+    {
+        if (!SystemParameters.ClientAreaAnimation) return; // Settings > Accessibility > Visual effects > Animation effects
+        var slide = new TranslateTransform();
+        Root.RenderTransform = slide;
+        var ease = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
+        slide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(_slideFrom, 0, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease });
+        Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
     }
 
     void ApplyPinned()
@@ -194,7 +212,7 @@ public partial class MainWindow : Window
 
     void Render()
     {
-        var board = Board.Build(_locals, _remote, _account, !_demo && Scanner.LocalRunner(), DateTimeOffset.Now, Shell.HasCode);
+        var board = Board.Build(_locals, _remote, _account, !_demo && Scanner.LocalRunner(), DateTimeOffset.Now, Shell.HasCode, _s.PinnedProjects);
         _views = board.Projects.ToList();
 
         SummaryText.Text = board.Summary;
@@ -231,12 +249,23 @@ public partial class MainWindow : Window
         var q = Search.Text.Trim();
         var shown = q.Length == 0 ? _views : _views.Where(v =>
             v.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || v.Branch.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
-        // "Needs you" above "Other projects", only when something needs you (the list is already sorted that way).
+        // "Needs you", "Pinned", "Other projects": headers only when one of the first two is there (the list is sorted that way).
         var cv = new System.Windows.Data.ListCollectionView(shown);
-        if (shown.Any(v => v.NeedsYou)) cv.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(nameof(ProjectView.Group)));
+        if (shown.Any(v => v.NeedsYou || v.Pinned)) cv.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(nameof(ProjectView.Group)));
+        // A redraw replaces every row: the project the keyboard was on keeps the focus.
+        var keep = Cards.IsKeyboardFocusWithin && Keyboard.FocusedElement is FrameworkElement { DataContext: ProjectView f } ? f.Path : null;
         Cards.ItemsSource = cv;
+        if (keep != null) Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => FocusRow(keep));
         NoMatch.Visibility = shown.Count == 0 && _views.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         SearchHint.Visibility = Search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    void FocusRow(string path)
+    {
+        var item = Cards.Items.OfType<ProjectView>().FirstOrDefault(v => v.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+        if (item == null) return;
+        Cards.SelectedItem = item;
+        (Cards.ItemContainerGenerator.ContainerFromItem(item) as ListBoxItem)?.Focus();
     }
 
     void UpdateAgo() =>
@@ -270,6 +299,8 @@ public partial class MainWindow : Window
             ViewLight.IsChecked = _s.View != "Advanced";
             ViewAdvanced.IsChecked = _s.View == "Advanced";
             OpacitySlider.Value = _s.Solidity;
+            IntervalBox.SelectedItem = IntervalBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _s.GitHubMinutes.ToString())
+                ?? IntervalBox.Items[1];
             _syncing = false;
         }
         ViewBtn.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
@@ -326,6 +357,13 @@ public partial class MainWindow : Window
         Save();
     }
 
+    void OnInterval(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncing || IntervalBox.SelectedItem is not ComboBoxItem { Tag: string t }) return;
+        _s.GitHubMinutes = int.Parse(t);
+        Save();
+    }
+
     void OnPinBox(object sender, RoutedEventArgs e)
     {
         if (!_syncing) SetPinned(PinBox.IsChecked == true);
@@ -343,6 +381,7 @@ public partial class MainWindow : Window
 
         bool advanced = _s.View == "Advanced";
         Cards.ItemTemplate = (DataTemplate)FindResource(advanced ? "CardTemplate" : "RowTemplate");
+        Cards.ItemContainerStyle = (Style)FindResource(advanced ? "CardItem" : "RowItem");
         ViewBtn.Content = advanced ? "" : "";
         ViewBtn.ToolTip = advanced ? "Light view" : "Advanced view";
 
@@ -407,6 +446,11 @@ public partial class MainWindow : Window
             case "github": if (p.Slug != null) Shell.OpenUrl($"https://github.com/{p.Slug}"); break;
             case "handoff": if (p.HandoffPath != null) Shell.Open(p.HandoffPath); break;
             case "copy": Clipboard.SetText(p.Path); break;
+            case "pin":
+                if (_s.PinnedProjects.RemoveAll(x => x.Equals(p.Path, StringComparison.OrdinalIgnoreCase)) == 0) _s.PinnedProjects.Add(p.Path);
+                Save();
+                Render();
+                break;
             case "hide":
                 _s.Hidden.Add(p.Path);
                 Save();
@@ -425,6 +469,16 @@ public partial class MainWindow : Window
             e.Handled = true;
         }
         else if (e.Key == Key.F5) { e.Handled = true; await RefreshAsync(true); }
+        else if (e.Key == Key.Enter && e.OriginalSource is ListBoxItem { DataContext: ProjectView p })
+        {
+            e.Handled = true; // the row's first button: VS Code when it is installed, else the folder
+            if (p.CanCode) Shell.Code(p.Path); else Shell.Open(p.Path);
+        }
+        else if (e.Key == Key.Down && Search.IsKeyboardFocusWithin && Cards.Items.Count > 0)
+        {
+            e.Handled = true; // from the filter box straight into the list
+            FocusRow(((ProjectView)Cards.Items[0]).Path);
+        }
         else if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control) { Search.Focus(); e.Handled = true; }
     }
 }

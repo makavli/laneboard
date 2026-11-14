@@ -114,6 +114,23 @@ public class BoardTests
     }
 
     [Fact]
+    public void Pinned_projects_come_after_needs_you_and_before_the_rest()
+    {
+        var locals = new[] { L("recent", hours: 1), L("pinned", hours: 90), L("failing", hours: 80, slug: "o/failing") };
+        var remote = new Dictionary<string, RemoteInfo>
+        {
+            ["o/failing"] = new("PRIVATE", [new(1, "x", "https://github.com/o/failing/pull/1", "fail", false)], 1, 0, 0),
+        };
+        var b = Board.Build(locals, remote, null, false, Now, false, [@"c:\P\PINNED", @"C:\p\failing"]);
+
+        Assert.Equal(["failing", "pinned", "recent"], b.Projects.Select(p => p.Name));
+        Assert.Equal(["Needs you", "Pinned", "Other projects"], b.Projects.Select(p => p.Group));
+        Assert.Equal("Unpin", b.Projects[1].PinLabel);
+        Assert.Equal("Pin to top", b.Projects[2].PinLabel);
+        Assert.Equal("recent, main, clean", b.Projects[2].SpokenName);
+    }
+
+    [Fact]
     public void Status_line_reads_like_a_sentence()
     {
         var b = Board.Build([L("a", changed: 3, hours: 2)], new Dictionary<string, RemoteInfo>(), null, false, Now, false);

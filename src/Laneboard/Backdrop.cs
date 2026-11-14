@@ -35,12 +35,13 @@ static class Backdrop
 
     /// Places the window like a Windows flyout: on the monitor under the pointer (the tray that was clicked),
     /// in the corner next to the taskbar, sized for that monitor's DPI. Works in physical pixels, before Show().
-    public static void PlaceNearTray(Window w, double widthDip, double heightDip)
+    /// True when the taskbar is at the top of the screen.
+    public static bool PlaceNearTray(Window w, double widthDip, double heightDip)
     {
         GetCursorPos(out var p);
         var mon = MonitorFromPoint(p, 2 /* nearest */);
         var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-        if (!GetMonitorInfo(mon, ref mi)) return;
+        if (!GetMonitorInfo(mon, ref mi)) return false;
         double s = GetDpiForMonitor(mon, 0, out var dpi, out _) == 0 ? dpi / 96.0 : 1;
         var work = mi.rcWork;
         int margin = (int)(12 * s);
@@ -54,6 +55,7 @@ static class Backdrop
         // the second call, now at the right DPI, puts it exactly where it belongs.
         SetWindowPos(h, IntPtr.Zero, x, y, wPx, hPx, 0x0004 | 0x0010 /* no z-order change, no activate */);
         SetWindowPos(h, IntPtr.Zero, x, y, wPx, hPx, 0x0004 | 0x0010);
+        return work.Top > mi.rcMonitor.Top;
     }
 
     public static bool IsDark(string theme) => theme == "Dark" || (theme != "Light" && SystemIsDark());
