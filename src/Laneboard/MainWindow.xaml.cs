@@ -50,11 +50,29 @@ public partial class MainWindow : Window
         PreviewKeyDown += OnKey;
         _timer.Tick += async (_, _) => await Tick();
         _timer.Start();
+
+        // A file changed in a repository: wait until the burst settles, then re-read just that repository.
+        // While hidden, changes only pile up; they are read when the window opens.
+        _watch.Changed += () => Dispatcher.BeginInvoke(() =>
+        {
+            if (!IsVisible) return;
+            _settle.Stop();
+            _settle.Start();
+        });
+        _settle.Tick += async (_, _) =>
+        {
+            _settle.Stop();
+            await RefreshChangedAsync();
+        };
     }
+
+    readonly RepoWatcher _watch = new();
+    readonly DispatcherTimer _settle = new() { Interval = TimeSpan.FromSeconds(1.5) };
 
     public void AllowClose()
     {
         _allowClose = true;
+        _watch.Dispose();
         Close();
     }
 
@@ -67,6 +85,7 @@ public partial class MainWindow : Window
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
         if (DateTime.UtcNow - _lastLocal > TimeSpan.FromSeconds(20)) _ = RefreshAsync(false);
+        else _ = RefreshChangedAsync(); // files that changed while the window was hidden
     }
 
     public void ToggleFlyout()
@@ -79,11 +98,7 @@ public partial class MainWindow : Window
 
     void PlaceNearTray()
     {
-        // shortcut: primary screen's work area only; on a multi-monitor setup the tray's own screen would be better.
-        var wa = SystemParameters.WorkArea;
-        Height = Math.Min(720, wa.Height - 24);
-        Left = wa.Right - Width - 12;
-        Top = wa.Bottom - Height - 12;
+        Backdrop.PlaceNearTray(this, 420, 680);
         _placed = true;
     }
 
@@ -130,6 +145,8 @@ public partial class MainWindow : Window
             else
             {
                 var paths = await Task.Run(() => Scanner.Discover(_s.Roots, _s.Hidden));
+                _watch.Sync(paths);
+                _watch.TakeDirty(); // this full read covers every pending change
                 _locals = await Scanner.ReadAll(paths);
                 if (full || DateTime.UtcNow - _lastRemote > RemoteEvery)
                 {
@@ -150,6 +167,23 @@ public partial class MainWindow : Window
             _busy = false;
             RefreshBtn.IsEnabled = true;
         }
+    }
+
+    /// Re-reads only the repositories whose files changed (the watcher's list), then redraws.
+    async Task RefreshChangedAsync()
+    {
+        if (_demo) return;
+        if (_busy) { _settle.Start(); return; } // a full read is running: try again once it is done
+        var dirty = _watch.TakeDirty();
+        if (dirty.Count == 0) return;
+        _busy = true;
+        try
+        {
+            var fresh = (await Scanner.ReadAll(dirty)).ToDictionary(l => l.Path, StringComparer.OrdinalIgnoreCase);
+            _locals = _locals.Select(l => fresh.TryGetValue(l.Path, out var f) ? f : l).ToList();
+            Render();
+        }
+        finally { _busy = false; }
     }
 
     void Render()
