@@ -13,6 +13,9 @@ public sealed class Settings
     public string View { get; set; } = "Light";     // Light | Advanced
     public int Solidity { get; set; }               // 0 = glass, 100 = solid background
 
+    /// Set for test runs (`--root`, `--pinned`): the in-memory overrides must never reach the user's file.
+    [System.Text.Json.Serialization.JsonIgnore] public bool ReadOnly { get; set; }
+
     public static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), App.Name);
     static string FilePath => Path.Combine(Dir, "settings.json");
 
@@ -30,6 +33,7 @@ public sealed class Settings
 
     public void Save()
     {
+        if (ReadOnly) return;
         Directory.CreateDirectory(Dir);
         var tmp = FilePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));

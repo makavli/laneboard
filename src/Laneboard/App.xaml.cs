@@ -14,6 +14,10 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // A tray app must not vanish on one bad refresh: log the error and keep running.
+        DispatcherUnhandledException += (_, ex) => { Log.Error("ui", ex.Exception); ex.Handled = true; };
+        TaskScheduler.UnobservedTaskException += (_, ex) => { Log.Error("task", ex.Exception); ex.SetObserved(); };
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) => { if (ex.ExceptionObject is Exception x) Log.Error("fatal", x); };
         var args = e.Args;
         bool demo = args.Contains("--demo");
 
@@ -26,8 +30,10 @@ public partial class App : Application
         }
 
         // One instance per user: a second launch just brings the first one forward.
-        _single = new Mutex(true, $"{Name}.Single.{Environment.UserName}", out bool first);
-        var show = new EventWaitHandle(false, EventResetMode.AutoReset, $"{Name}.Show.{Environment.UserName}");
+        // A test run (--root) gets its own lock, so it can run beside the user's copy without touching it.
+        var lane = $"{Environment.UserName}{(Arg(args, "--root") != null ? ".test" : "")}";
+        _single = new Mutex(true, $"{Name}.Single.{lane}", out bool first);
+        var show = new EventWaitHandle(false, EventResetMode.AutoReset, $"{Name}.Show.{lane}");
         if (!first)
         {
             AllowSetForegroundWindow(-1); // we were just launched by the user: lend the running copy the right to come forward
@@ -36,7 +42,10 @@ public partial class App : Application
             return;
         }
 
-        _win = new MainWindow(Settings.Load(), demo);
+        var settings = Settings.Load();
+        if (Arg(args, "--root") is { } root) { settings.Roots = [root]; settings.Hidden = []; settings.ReadOnly = true; }
+        if (args.Contains("--pinned")) { settings.Pinned = true; settings.ReadOnly = true; }
+        _win = new MainWindow(settings, demo);
         _tray = new Tray(_win, Quit);
         _win.SummaryChanged += s => _tray.SetText(s);
         new Thread(() => { while (show.WaitOne()) Dispatcher.Invoke(_win.ShowFlyout); }) { IsBackground = true }.Start();
