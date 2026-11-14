@@ -12,6 +12,7 @@ public sealed class Settings
     public string Theme { get; set; } = "System";   // System | Light | Dark
     public string View { get; set; } = "Light";     // Light | Advanced
     public int Solidity { get; set; }               // 0 = glass, 100 = solid background
+    public bool Notify { get; set; } = true;        // Windows notifications for failing/passing checks, safe points, runners
 
     /// Set for test runs (`--root`, `--pinned`): the in-memory overrides must never reach the user's file.
     [System.Text.Json.Serialization.JsonIgnore] public bool ReadOnly { get; set; }

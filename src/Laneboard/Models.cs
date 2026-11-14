@@ -20,8 +20,13 @@ public sealed record ProjectView(
     string Name, string Path, string Branch, bool IsPublic, string StatusLine, string? StatusTip,
     IReadOnlyList<string> Warnings, IReadOnlyList<PrView> Prs, string? MorePrs,
     string? Handoff, string? HandoffMeta, bool SafePoint, string? HandoffPath,
-    string? Slug, DateTimeOffset LastTouched, int Changed, bool CanCode)
+    string? Slug, DateTimeOffset LastTouched, int Changed, bool CanCode, int RunnersOnline = 0, int RunnersTotal = 0)
 {
+    /// Something is wrong: it puts the badge on the tray icon.
+    public bool Problem => HasWarnings || HasFailing;
+    /// Waits for the user: a problem, or a session stopped at a safe point. Listed first, under "Needs you".
+    public bool NeedsYou => Problem || SafePoint;
+    public string Group => NeedsYou ? "Needs you" : "Other projects";
     public bool HasWarnings => Warnings.Count > 0;
     public bool HasPrs => Prs.Count > 0;
     public bool HasMorePrs => MorePrs != null;

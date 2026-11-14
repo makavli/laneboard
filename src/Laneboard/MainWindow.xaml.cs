@@ -20,8 +20,13 @@ public partial class MainWindow : Window
     bool _busy, _allowClose, _dialogOpen, _placed, _syncing;
 
     static readonly TimeSpan RemoteEvery = TimeSpan.FromMinutes(5);
+    Board? _board;
 
-    public event Action<string>? SummaryChanged;
+    /// While checks run, GitHub is read every 2 minutes, so "checks passed" arrives soon after they finish.
+    TimeSpan RemoteDue => _views.Any(v => v.WorstState == "pending") ? TimeSpan.FromMinutes(2) : RemoteEvery;
+
+    /// Every redraw: the board, and a notification when something worth one changed since the last board.
+    public event Action<Board, Alert?>? BoardChanged;
 
     public MainWindow(Settings settings, bool demo)
     {
@@ -126,7 +131,8 @@ public partial class MainWindow : Window
     async Task Tick()
     {
         UpdateAgo();
-        bool due = IsVisible ? DateTime.UtcNow - _lastLocal >= TimeSpan.FromSeconds(55) : DateTime.UtcNow - _lastLocal >= RemoteEvery;
+        var now = DateTime.UtcNow;
+        bool due = now - _lastLocal >= (IsVisible ? TimeSpan.FromSeconds(55) : RemoteEvery) || now - _lastRemote >= RemoteDue;
         if (due) await RefreshAsync(false);
     }
 
@@ -148,7 +154,7 @@ public partial class MainWindow : Window
                 _watch.Sync(paths);
                 _watch.TakeDirty(); // this full read covers every pending change
                 _locals = await Scanner.ReadAll(paths);
-                if (full || DateTime.UtcNow - _lastRemote > RemoteEvery)
+                if (full || DateTime.UtcNow - _lastRemote >= RemoteDue)
                 {
                     var slugs = _locals.Select(l => l.Slug).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                     var account = GitHub.Account();
@@ -213,7 +219,11 @@ public partial class MainWindow : Window
         TopPanel.Visibility = empty || SettingsPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
         ApplyFilter();
         UpdateAgo();
-        SummaryChanged?.Invoke(board.TrayText);
+
+        // The first board is the baseline: what was already true at start-up is not news.
+        var alert = _board == null || _demo || !_s.Notify ? null : Alerts.Combine(Alerts.Diff(_board, board));
+        _board = board;
+        BoardChanged?.Invoke(board, alert);
     }
 
     void ApplyFilter()
@@ -221,7 +231,10 @@ public partial class MainWindow : Window
         var q = Search.Text.Trim();
         var shown = q.Length == 0 ? _views : _views.Where(v =>
             v.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || v.Branch.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
-        Cards.ItemsSource = shown;
+        // "Needs you" above "Other projects", only when something needs you (the list is already sorted that way).
+        var cv = new System.Windows.Data.ListCollectionView(shown);
+        if (shown.Any(v => v.NeedsYou)) cv.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(nameof(ProjectView.Group)));
+        Cards.ItemsSource = cv;
         NoMatch.Visibility = shown.Count == 0 && _views.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         SearchHint.Visibility = Search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -250,6 +263,7 @@ public partial class MainWindow : Window
             HiddenCard.Visibility = _s.Hidden.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             _syncing = true;
             StartupBox.IsChecked = !_demo && Settings.StartWithWindows;
+            NotifyBox.IsChecked = _s.Notify;
             ThemeSystem.IsChecked = _s.Theme == "System";
             ThemeLight.IsChecked = _s.Theme == "Light";
             ThemeDark.IsChecked = _s.Theme == "Dark";
@@ -303,6 +317,13 @@ public partial class MainWindow : Window
     {
         if (_syncing || _demo) return;
         Settings.StartWithWindows = StartupBox.IsChecked == true;
+    }
+
+    void OnNotifyBox(object sender, RoutedEventArgs e)
+    {
+        if (_syncing) return;
+        _s.Notify = NotifyBox.IsChecked == true;
+        Save();
     }
 
     void OnPinBox(object sender, RoutedEventArgs e)

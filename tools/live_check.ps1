@@ -41,6 +41,11 @@ Pop-Location
 $log = Join-Path $env:LOCALAPPDATA 'Laneboard\laneboard.log'
 $logLines = if (Test-Path $log) { (Get-Content $log).Count } else { 0 }
 
+# Laneboard's toasts in the notification centre (0 before the app ever registered its app id).
+[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+function ToastCount { try { @([Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory('Laneboard')).Count } catch { 0 } }
+$toastsBefore = ToastCount
+
 $fail = @()
 $p = Start-Process $exe -ArgumentList @('--root', $repo, '--pinned') -PassThru
 try {
@@ -65,6 +70,13 @@ try {
     Set-Content -Path (Join-Path $proj 'new-file.txt') -Value 'x'
     Start-Sleep -Seconds 5
     [Win]::Save($h, (Join-Path $out 'live-after.png'))
+
+    # Notification: a new safe point in the handoff adds a toast to the notification centre (kept there under Do not disturb too).
+    Set-Content -Path (Join-Path $proj 'HANDOFF.md') -Value "# Handoff`n`nSAFE POINT: the live check wrote a new one.`n"
+    Start-Sleep -Seconds 4
+    $toasts = ToastCount
+    Write-Output "toasts  $toastsBefore before, $toasts after"
+    if ($toasts -le $toastsBefore) { $fail += 'no toast for the new safe point' }
     if ($p.HasExited) { $fail += 'the app exited during the check' }
     else {
         $p.Refresh()
@@ -84,4 +96,4 @@ if (Test-Path $log) {
 }
 
 if ($fail.Count) { Write-Output ("LIVE CHECK FAILED: " + ($fail -join '; ')); exit 1 }
-Write-Output 'LIVE CHECK PASSED (look at build/app/live-before.png and live-after.png: "clean" then "1 changed")'
+Write-Output 'LIVE CHECK PASSED (look at build/app/live-before.png and live-after.png: "clean" then "1 changed"; a "Safe point" toast in the notification centre)'

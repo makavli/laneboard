@@ -325,7 +325,17 @@
 
     <ScrollViewer x:Name="ListScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Margin="0,0,0,10">
-        <ItemsControl x:Name="Cards" ItemTemplate="{StaticResource RowTemplate}" Focusable="False"/>
+        <ItemsControl x:Name="Cards" ItemTemplate="{StaticResource RowTemplate}" Focusable="False">
+          <ItemsControl.GroupStyle>
+            <GroupStyle>
+              <GroupStyle.HeaderTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Name}" Style="{StaticResource Label}" Margin="20,10,0,4"/>
+                </DataTemplate>
+              </GroupStyle.HeaderTemplate>
+            </GroupStyle>
+          </ItemsControl.GroupStyle>
+        </ItemsControl>
         <TextBlock x:Name="NoMatch" Text="No project matches." Style="{StaticResource Secondary}" HorizontalAlignment="Center"
                    Margin="0,24,0,0" Visibility="Collapsed"/>
       </StackPanel>
@@ -401,6 +411,9 @@
                       Checked="OnStartup" Unchecked="OnStartup"/>
             <CheckBox x:Name="PinBox" Content="Keep the window open when I click elsewhere" Margin="0,6,0,0"
                       Checked="OnPinBox" Unchecked="OnPinBox"/>
+            <CheckBox x:Name="NotifyBox" Margin="0,6,0,0" Checked="OnNotifyBox" Unchecked="OnNotifyBox">
+              <TextBlock TextWrapping="Wrap" Text="Notify me when checks fail or pass, a safe point is written, or a runner goes offline"/>
+            </CheckBox>
           </StackPanel>
         </Border>
 

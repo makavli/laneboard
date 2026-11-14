@@ -3,7 +3,7 @@ namespace Laneboard;
 /// Turns what was read from disk and GitHub into what the window shows. Pure, so it is unit-tested.
 public sealed record Board(
     IReadOnlyList<ProjectView> Projects, string Summary, string TrayText,
-    IReadOnlyList<string> Warnings, string? RunnerChip, string? MinutesChip, bool NeedsUserScope)
+    IReadOnlyList<string> Warnings, string? RunnerChip, string? MinutesChip, bool NeedsUserScope, bool Badge = false)
 {
     public static Board Build(IReadOnlyList<LocalInfo> locals, IReadOnlyDictionary<string, RemoteInfo> remote,
         AccountInfo? account, bool localRunner, DateTimeOffset now, bool canCode)
@@ -39,12 +39,14 @@ public sealed record Board(
                 warn, prs, more > 0 ? $"+{more} more open" : null,
                 l.Handoff?.Snippet is { Length: > 0 } s ? s : null,
                 l.HandoffPath == null ? null : $"{System.IO.Path.GetFileName(l.HandoffPath)}{(l.HandoffTime is { } ht ? " · " + Parse.Ago(now - ht) : "")}",
-                l.Handoff?.SafePoint ?? false, l.HandoffPath, l.Slug, touched, l.Git.Changed, canCode));
+                l.Handoff?.SafePoint ?? false, l.HandoffPath, l.Slug, touched, l.Git.Changed, canCode,
+                r?.RunnersOnline ?? 0, r?.RunnersTotal ?? 0));
         }
 
         var sorted = views
             .OrderByDescending(v => v.HasWarnings)
             .ThenByDescending(v => v.HasFailing)
+            .ThenByDescending(v => v.SafePoint)
             .ThenByDescending(v => v.LastTouched)
             .ToList();
 
@@ -69,7 +71,8 @@ public sealed record Board(
         string? runner = rTotal > 0 ? $"Runners {rOnline}/{rTotal} online" : localRunner ? "A runner is running on this PC" : null;
         string? minutes = account?.Minutes is { } m ? $"Actions {m:0} min this month" : null;
 
-        return new Board(sorted, summary, tray, global, runner, minutes, account?.NeedsUserScope ?? false);
+        bool badge = sorted.Any(v => v.Problem) || account?.Net is > 0;
+        return new Board(sorted, summary, tray, global, runner, minutes, account?.NeedsUserScope ?? false, badge);
     }
 
     static string S(int n) => n == 1 ? "" : "s";
