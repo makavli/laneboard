@@ -6,7 +6,7 @@ Every project you're working on, at a glance: a native Windows 11 app that lives
 - Shows the branch, uncommitted changes, commits to push or pull, the last commit, and the first lines of a `HANDOFF.md` note (with a SAFE POINT badge)
 - Updates by itself a moment after a file changes in a repository: no refresh button needed
 - Shows open pull requests and their checks, repository visibility, and self-hosted runners, all read through your own GitHub CLI (`gh`)
-- Shows how much of your plan's free GitHub Actions allowance your private repositories used this month (public ones are free)
+- Shows this month's GitHub Actions minutes, and how much of your plan's free allowance they used once it has watched a whole month (GitHub counts each run by whether its repository was public then; Laneboard notes that daily). Click it for GitHub's billing page
 - Warns about a public repository with a self-hosted runner, and about GitHub Actions billing you money
 - Notifies you (Windows notifications, can be turned off) when checks fail or pass, a new SAFE POINT is written,
   or a runner goes offline; a red dot on the tray icon while a project has a problem; projects that need you come first

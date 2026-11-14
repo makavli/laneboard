@@ -126,12 +126,15 @@ public static class Parse
 
     /// Minutes = all minutes run; PrivateCost = what the non-public ones cost at each runner's rate, which is what the
     /// plan's dollar allowance pays for (public repos on standard runners are free); Net = what is actually billed.
-    public sealed record ActionsUse(double Minutes, double PublicMinutes, double PrivateCost, double Net);
+    /// Known = the visibility of every run's repository on its day was known, so PublicMinutes and PrivateCost hold.
+    public sealed record ActionsUse(double Minutes, double PublicMinutes, double PrivateCost, double Net, bool Known);
 
-    /// GitHub's billing usage report for one month. A repo not in publicRepos counts as private (the safe side).
-    public static ActionsUse ActionsUsage(JsonElement root, IReadOnlySet<string> publicRepos)
+    /// GitHub's billing usage report for one month. publicOn(day) = the repos public that day (null: not known);
+    /// a repo not in it counts as private.
+    public static ActionsUse ActionsUsage(JsonElement root, Func<string, IReadOnlySet<string>?> publicOn)
     {
         double minutes = 0, pub = 0, cost = 0, net = 0;
+        bool known = true;
         if (root.TryGetProperty("usageItems", out var items) && items.ValueKind == JsonValueKind.Array)
             foreach (var it in items.EnumerateArray())
             {
@@ -140,10 +143,12 @@ public static class Parse
                 if (!Str(it, "unitType").Equals("minutes", StringComparison.OrdinalIgnoreCase)) continue; // storage has its own allowance
                 double q = Num(it, "quantity");
                 minutes += q;
-                if (publicRepos.Contains(Str(it, "repositoryName"))) pub += q;
+                var date = Str(it, "date");
+                if ((date.Length >= 10 ? publicOn(date[..10]) : null) is not { } publicThatDay) known = false;
+                else if (publicThatDay.Contains(Str(it, "repositoryName"))) pub += q;
                 else cost += Num(it, "grossAmount");
             }
-        return new(minutes, pub, cost, net);
+        return new(minutes, pub, cost, net, known);
     }
 
     /// Monthly included Actions compute in dollars by plan (docs.github.com, billing for GitHub Actions).

@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     List<LocalInfo> _locals = [];
     Dictionary<string, RemoteInfo> _remote = new(StringComparer.OrdinalIgnoreCase);
     AccountInfo? _account;
+    readonly VisibilityLog _visibility = VisibilityLog.Load();
     List<ProjectView> _views = [];
     DateTime _lastLocal = DateTime.MinValue, _lastRemote = DateTime.MinValue, _hiddenAt = DateTime.MinValue;
     bool _busy, _allowClose, _dialogOpen, _placed, _syncing;
@@ -175,10 +176,11 @@ public partial class MainWindow : Window
                 if (full || DateTime.UtcNow - _lastRemote >= RemoteDue)
                 {
                     var slugs = _locals.Select(l => l.Slug).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                    var account = GitHub.Account();
+                    var account = GitHub.Account(_visibility);
                     var repos = GitHub.Repos(slugs);
                     await Task.WhenAll(account, repos);
                     _account = account.Result;
+                    if (!_s.ReadOnly) _visibility.Save();
                     _remote = repos.Result;
                     _lastRemote = DateTime.UtcNow;
                 }
@@ -344,6 +346,8 @@ public partial class MainWindow : Window
         HiddenCard.Visibility = _s.Hidden.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         await RefreshAsync(false);
     }
+
+    void OnMinutesChip(object sender, RoutedEventArgs e) => Shell.OpenUrl("https://github.com/settings/billing");
 
     void OnStartup(object sender, RoutedEventArgs e)
     {

@@ -15,7 +15,8 @@ usage. These requests go from your PC to GitHub under your own `gh` sign-in. Lan
 to no other server. Without `gh`, Laneboard works offline.
 
 ## What it stores
-Its settings and an error log, in its own folder on this PC (`%LOCALAPPDATA%\Laneboard`, or the package's private
+Its settings, an error log and a list of which of your repositories were public on each day (GitHub counts free
+Actions minutes by that, and its API only tells today's), in its own folder on this PC (`%LOCALAPPDATA%\Laneboard`, or the package's private
 folder when installed from the Microsoft Store). Uninstalling the Store app removes them.
 
 ## Notifications

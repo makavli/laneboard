@@ -75,17 +75,22 @@ public class ParseTests
     {
         using var doc = JsonDocument.Parse("""
         {"usageItems":[
-          {"product":"actions","sku":"Actions Linux","unitType":"Minutes","quantity":100,"grossAmount":0.6,"netAmount":0,"repositoryName":"secret"},
-          {"product":"Actions","sku":"Actions Windows","unitType":"minutes","quantity":10,"grossAmount":0.1,"netAmount":0.8,"repositoryName":"gone"},
-          {"product":"actions","sku":"Actions macOS 3-core","unitType":"Minutes","quantity":20.5,"grossAmount":1.271,"netAmount":0,"repositoryName":"Open"},
-          {"product":"actions","sku":"Actions storage","unitType":"GigabyteHours","quantity":3,"grossAmount":9,"netAmount":0.1,"repositoryName":"secret"},
-          {"product":"git_lfs","unitType":"Minutes","quantity":999,"grossAmount":9,"netAmount":5}]}
+          {"date":"2026-11-02T10:00:00Z","product":"actions","sku":"Actions Linux","unitType":"Minutes","quantity":100,"grossAmount":0.6,"netAmount":0,"repositoryName":"secret"},
+          {"date":"2026-11-02T11:00:00Z","product":"Actions","sku":"Actions Windows","unitType":"minutes","quantity":10,"grossAmount":0.1,"netAmount":0.8,"repositoryName":"gone"},
+          {"date":"2026-11-03T09:00:00Z","product":"actions","sku":"Actions macOS 3-core","unitType":"Minutes","quantity":20.5,"grossAmount":1.271,"netAmount":0,"repositoryName":"Open"},
+          {"date":"2026-11-05T09:00:00Z","product":"actions","sku":"Actions Linux","unitType":"Minutes","quantity":5,"grossAmount":0.03,"netAmount":0,"repositoryName":"open"},
+          {"date":"2026-11-02T10:00:00Z","product":"actions","sku":"Actions storage","unitType":"GigabyteHours","quantity":3,"grossAmount":9,"netAmount":0.1,"repositoryName":"secret"},
+          {"date":"2026-11-02T10:00:00Z","product":"git_lfs","unitType":"Minutes","quantity":999,"grossAmount":9,"netAmount":5}]}
         """);
-        var a = Parse.ActionsUsage(doc.RootElement, new HashSet<string>(["open"], StringComparer.OrdinalIgnoreCase));
-        Assert.Equal(130.5, a.Minutes);
+        // "open" was public on the 3rd and private again from the 5th: each run counts by its own day.
+        var log = new VisibilityLog(new Dictionary<string, string[]> { ["2026-11-01"] = [], ["2026-11-03"] = ["open"], ["2026-11-05"] = [] });
+        var a = Parse.ActionsUsage(doc.RootElement, log.PublicOn);
+        Assert.True(a.Known);
+        Assert.Equal(135.5, a.Minutes);
         Assert.Equal(20.5, a.PublicMinutes);
-        Assert.Equal(0.7, a.PrivateCost, 6); // "gone" is not listed as public, so it counts
+        Assert.Equal(0.73, a.PrivateCost, 6); // "gone" is not listed as public, so it counts
         Assert.Equal(0.9, a.Net, 6);
+        Assert.False(Parse.ActionsUsage(doc.RootElement, new VisibilityLog(new Dictionary<string, string[]> { ["2026-11-03"] = ["open"] }).PublicOn).Known);
         Assert.Equal(12, Parse.IncludedActions("free"));
         Assert.Null(Parse.IncludedActions("team"));
     }
@@ -93,14 +98,31 @@ public class ParseTests
     [Fact]
     public void Actions_chip_says_used_of_free_or_plainly_all_minutes()
     {
-        var use = new Parse.ActionsUse(1343, 677, 6.47, 0);
+        var use = new Parse.ActionsUse(1343, 677, 6.47, 0, true);
         var b = Board.Build([], new Dictionary<string, RemoteInfo>(), new(true, true, "me", use, 12, false), false, DateTimeOffset.Now, false);
         Assert.Equal($"Actions ${6.47:0.00} of $12 free used", b.MinutesChip);
         Assert.Contains($"{666:N0} min in private", b.MinutesTip);
         Assert.Contains($"about {1078:N0} of {2000:N0} Linux minutes", b.MinutesTip);
         var plain = Board.Build([], new Dictionary<string, RemoteInfo>(), new(true, true, "me", use, null, false), false, DateTimeOffset.Now, false);
-        Assert.Equal($"Actions {1343:N0} min run this month", plain.MinutesChip);
-        Assert.StartsWith("All repositories, not your free allowance", plain.MinutesTip);
+        Assert.Equal($"Actions {1343:N0} min this month", plain.MinutesChip);
+        Assert.Contains("plan's free allowance", plain.MinutesTip);
+        var learning = Board.Build([], new Dictionary<string, RemoteInfo>(), new(true, true, "me", use with { Known = false }, 12, false), false, DateTimeOffset.Now, false);
+        Assert.Equal($"Actions {1343:N0} min this month", learning.MinutesChip);
+        Assert.Contains("watched a whole month", learning.MinutesTip);
+    }
+
+    [Fact]
+    public void Visibility_log_keeps_the_latest_reading_of_each_day_and_carries_it_forward()
+    {
+        var log = new VisibilityLog();
+        Assert.Null(log.PublicOn("2026-11-14"));
+        log.Record("2026-11-14", ["Fewturns"]);
+        log.Record("2026-11-14", ["fewturns", "ironvolt"]); // a later reading the same day replaces it
+        Assert.Null(log.PublicOn("2026-11-13"));
+        Assert.Equal(["fewturns", "ironvolt"], log.PublicOn("2026-11-14")!.Order());
+        Assert.True(log.PublicOn("2026-12-02")!.Contains("IronVolt")); // a day Laneboard didn't run keeps the day before's
+        for (int d = 1; d <= 80; d++) log.Record(new DateTime(2027, 1, 1).AddDays(d).ToString("yyyy-MM-dd"), []);
+        Assert.Null(log.PublicOn("2027-01-05")); // only the last 70 days are kept
     }
 }
 
@@ -120,7 +142,7 @@ public class BoardTests
             ["o/public"] = new("PUBLIC", [], 0, 1, 1),
             ["o/failing"] = new("PRIVATE", [new(1, "x", "https://github.com/o/failing/pull/1", "fail", false)], 3, 0, 0),
         };
-        var b = Board.Build(locals, remote, new(true, true, "o", new(10, 0, 0.06, 1.5), 12, false), false, Now, false);
+        var b = Board.Build(locals, remote, new(true, true, "o", new(10, 0, 0.06, 1.5, true), 12, false), false, Now, false);
 
         Assert.Equal(["public", "failing", "recent", "old"], b.Projects.Select(p => p.Name));
         Assert.Contains("self-hosted runner", b.Projects[0].Warnings[0]);
