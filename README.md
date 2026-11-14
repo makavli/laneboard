@@ -17,13 +17,24 @@ Every project you're working on, at a glance: a native Windows 11 app that lives
 - Opens like a Windows flyout, next to the taskbar on the monitor you clicked, sliding in unless Windows animations are off
 - Read-only: it never writes to a repository (`git --no-optional-locks`), stores no token, and sends nothing anywhere except `gh` calls
 
-Free to use, free to run: no account, no server, no telemetry. Progress: [ROADMAP.md](ROADMAP.md).
+Free to use, free to run: no account, no server, no telemetry ([PRIVACY.md](PRIVACY.md)). Progress: [ROADMAP.md](ROADMAP.md).
 
 ## Build
 
 ```bash
-bash tools/check.sh      # tests + build/app/Laneboard.exe (single file, self-contained) + demo snapshots
+bash tools/check.sh      # tests + build/app/Laneboard.exe (single file, self-contained) + demo snapshots + the MSIX
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/live_check.ps1   # the real exe on a throwaway repo
+```
+
+The gate also builds the Microsoft Store package, `dist/Laneboard-<version>-x64.msix`, and the Store screenshots in
+`dist/store/` (`store/build_msix.sh`, needs the free Windows SDK). Packaged, Laneboard starts with Windows through the
+package's startup task and shows notifications under the package's name; `Laneboard.exe` in a terminal runs it with
+arguments. To try it with Developer Mode on:
+
+```bash
+powershell -Command "Add-AppxPackage -Register build/store/layout/AppxManifest.xml"
+LIVE_PACKAGE=1 powershell -NoProfile -ExecutionPolicy Bypass -File tools/live_check.ps1   # also flips the startup task
+powershell -Command "Get-AppxPackage Laneboard* | Remove-AppxPackage"   # before the next build empties build/store
 ```
 
 Needs the .NET 10 SDK. The exe is also copied to `dist/` when no copy is running from there.

@@ -3,3 +3,4 @@ obj/
 dist/
 *.log
 build/
+store/identity.env

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Microsoft Store package of Laneboard. store/build_msix.sh fills the @...@ values: the identity from
+     store/identity.env (Partner Center > Product identity; a local test identity without it), the version from the
+     csproj. A classic desktop program in a package: it runs with the user's normal rights (runFullTrust). -->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+         xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap uap3 desktop rescap">
+  <Identity Name="@IDENTITY_NAME@" Publisher="@IDENTITY_PUBLISHER@" Version="@VERSION@.0" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>Laneboard</DisplayName>
+    <PublisherDisplayName>@PUBLISHER_DISPLAY@</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="Laneboard" Executable="Laneboard\Laneboard.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Laneboard" Description="Every project you are working on, at a glance."
+                          BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <!-- Start with Windows: off until the user ticks it in Laneboard's settings (Settings.StartWithWindows).
+             Windows then starts it at sign-in, in the notification area; Windows Settings > Apps > Startup also lists it. -->
+        <desktop:Extension Category="windows.startupTask" Executable="Laneboard\Laneboard.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="LaneboardStartup" Enabled="false" DisplayName="Laneboard" />
+        </desktop:Extension>
+        <!-- "Laneboard.exe" typed in a terminal runs the packaged app with its arguments (demo, snapshot, the live check). -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="Laneboard\Laneboard.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="Laneboard.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

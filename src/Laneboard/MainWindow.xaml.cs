@@ -349,6 +349,9 @@ public partial class MainWindow : Window
     {
         if (_syncing || _demo) return;
         Settings.StartWithWindows = StartupBox.IsChecked == true;
+        _syncing = true;
+        StartupBox.IsChecked = Settings.StartWithWindows;
+        _syncing = false;
     }
 
     void OnNotifyBox(object sender, RoutedEventArgs e)
