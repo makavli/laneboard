@@ -1,3 +1,4 @@
+using Windows.ApplicationModel;
 using System.IO;
 using System.Text.Json;
 using Microsoft.Win32;
@@ -58,17 +59,40 @@ public sealed class Settings
     }
 
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string StartupTaskId = "LaneboardStartup"; // = TaskId in store/AppxManifest.xml
 
-    // shortcut: the Run key works for the plain .exe; a Store (MSIX) build needs a StartupTask instead.
+    /// The plain .exe uses the Run key; the Store package can't (its registry is private), so it uses its startup task,
+    /// which the user can also turn off in Windows Settings > Apps > Startup.
     public static bool StartWithWindows
     {
         get
         {
+            if (App.Packaged)
+                try
+                {
+                    return Task.Run(async () => (await StartupTask.GetAsync(StartupTaskId)).State
+                        is StartupTaskState.Enabled or StartupTaskState.EnabledByPolicy).GetAwaiter().GetResult();
+                }
+                catch (Exception ex) { Log.Error("startup task", ex); return false; }
             using var k = Registry.CurrentUser.OpenSubKey(RunKey);
             return k?.GetValue(App.Name) is string;
         }
         set
         {
+            if (App.Packaged)
+            {
+                // Windows refuses to turn it back on if the user turned it off in Windows Settings: the box then shows that.
+                try
+                {
+                    Task.Run(async () =>
+                    {
+                        var t = await StartupTask.GetAsync(StartupTaskId);
+                        if (value) await t.RequestEnableAsync(); else t.Disable();
+                    }).GetAwaiter().GetResult();
+                }
+                catch (Exception ex) { Log.Error("startup task", ex); }
+                return;
+            }
             using var k = Registry.CurrentUser.CreateSubKey(RunKey);
             if (value) k.SetValue(App.Name, $"\"{Environment.ProcessPath}\" --tray");
             else k.DeleteValue(App.Name, false);

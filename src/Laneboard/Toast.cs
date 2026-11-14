@@ -17,6 +17,7 @@ static class Toast
     {
         try
         {
+            if (App.Packaged) { _notifier = ToastNotificationManager.CreateToastNotifier(); return; } // name and icon come from the package
             var icon = Path.Combine(Settings.Dir, "laneboard.png");
             if (!File.Exists(icon))
             {

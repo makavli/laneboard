@@ -57,7 +57,7 @@ public static class GitHub
         return map;
     }
 
-    public static async Task<AccountInfo> Account()
+    public static async Task<AccountInfo> Account(VisibilityLog visibility)
     {
         var u = await Proc.Run("gh", null, ["api", "user", "-q", ".login + \" \" + (.plan.name // \"\")"]);
         if (u.Code == -1) return new(false, false, null, null, null, false);
@@ -73,11 +73,14 @@ public static class GitHub
             try
             {
                 using var doc = JsonDocument.Parse(b.Out);
-                // Usage items name the repo without its owner; public ones are free. Visibility is today's.
+                // Usage items name the repo without its owner; runs in public repos are free. GitHub only tells today's
+                // visibility, so it is written down each day and each run is counted by its own day's.
                 var p = await Proc.Run("gh", null, ["repo", "list", "--visibility", "public", "--limit", "1000", "--json", "name", "-q", ".[].name"]);
-                var pub = p.Out.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                double? included = p.Code == 0 && parts.Length > 1 ? Parse.IncludedActions(parts[1]) : null;
-                return new(true, true, login, Parse.ActionsUsage(doc.RootElement, pub), included, false);
+                if (p.Code == 0)
+                    visibility.Record(now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                        p.Out.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                double? included = parts.Length > 1 ? Parse.IncludedActions(parts[1]) : null;
+                return new(true, true, login, Parse.ActionsUsage(doc.RootElement, visibility.PublicOn), included, false);
             }
             catch (JsonException) { }
         }

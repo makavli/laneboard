@@ -6,6 +6,17 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $out = Join-Path $root 'build\app'
 $exe = if ($env:LIVE_EXE) { $env:LIVE_EXE } else { Join-Path $out 'Laneboard.exe' }
+# LIVE_PACKAGE=1: the installed Store package (store/build_msix.sh, then Add-AppxPackage), run through its command
+# alias so it keeps the package identity. Its toasts are filed under the package's app id, its log in its private folder.
+$appId = 'Laneboard'
+$logs = @(Join-Path $env:LOCALAPPDATA 'Laneboard\laneboard.log')
+if ($env:LIVE_PACKAGE) {
+    $pkg = Get-AppxPackage | Where-Object { $_.Name -like 'Laneboard*' } | Select-Object -First 1
+    if (-not $pkg) { Write-Output 'FAIL: no Laneboard package installed'; exit 1 }
+    $exe = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\Laneboard.exe'
+    $appId = "$($pkg.PackageFamilyName)!Laneboard"
+    $logs += Join-Path $env:LOCALAPPDATA "Packages\$($pkg.PackageFamilyName)\LocalCache\Local\Laneboard\laneboard.log"
+}
 if (-not (Test-Path $exe)) { Write-Output 'FAIL: build\app\Laneboard.exe missing (run tools/check.sh first)'; exit 1 }
 
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms, UIAutomationClient, UIAutomationTypes
@@ -40,12 +51,11 @@ git add -A
 git -c user.name=live -c user.email=live@example.invalid commit -q -m 'fixture'
 Pop-Location
 
-$log = Join-Path $env:LOCALAPPDATA 'Laneboard\laneboard.log'
-$logLines = if (Test-Path $log) { (Get-Content $log).Count } else { 0 }
+$started = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
 
 # Laneboard's toasts in the notification centre (0 before the app ever registered its app id).
 [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
-function ToastCount { try { @([Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory('Laneboard')).Count } catch { 0 } }
+function ToastCount { try { @([Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory($appId)).Count } catch { 0 } }
 $toastsBefore = ToastCount
 
 $fail = @()
@@ -109,6 +119,20 @@ try {
         Write-Output "focus   after the redraw '$f2'"
         if ($f2 -notlike 'sample-project*') { $fail += "a redraw took the focus off the project ('$f2')" }
     }
+    # Packaged: the settings box drives the package's startup task, then is put back. Registry State = StartupTaskState:
+    # 0 Disabled, 1 DisabledByUser (off in Windows Settings: the app can't turn it on), 2 Enabled.
+    if ($env:LIVE_PACKAGE) {
+        $key = "HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData\$($pkg.PackageFamilyName)\LaneboardStartup"
+        function TaskState { try { (Get-ItemProperty $key -ErrorAction Stop).State } catch { 'none' } }
+        function Named($n) { $uia.FindFirst('Descendants', (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $n))) }
+        (Named 'Settings').GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        Start-Sleep -Milliseconds 800
+        $toggle = (Named 'Start with Windows (in the notification area)').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+        $s0 = TaskState; $toggle.Toggle(); Start-Sleep -Seconds 1; $s1 = TaskState; $toggle.Toggle(); Start-Sleep -Seconds 1; $s2 = TaskState
+        Write-Output "startup task state $s0 -> $s1 -> $s2"
+        $want = if ($s0 -eq 2) { @(0, 2) } else { @(2, 0) }
+        if ($s1 -ne $want[0] -or $s2 -ne $want[1]) { $fail += "the startup task did not follow the settings box ($s0 -> $s1 -> $s2)" }
+    }
     if ($p.HasExited) { $fail += 'the app exited during the check' }
     else {
         $p.Refresh()
@@ -122,8 +146,9 @@ finally {
     Remove-Item -Recurse -Force $repo -ErrorAction SilentlyContinue
 }
 
-if (Test-Path $log) {
-    $new = @(Get-Content $log | Select-Object -Skip $logLines)
+# Log lines start with their time; a packaged copy may start its log as a copy of the old one.
+foreach ($log in $logs | Where-Object { Test-Path $_ }) {
+    $new = @(Get-Content $log | Where-Object { $_ -ge $started })
     if ($new.Count) { $fail += "errors logged during the run: $($new[0])" }
 }
 

@@ -81,15 +81,17 @@ public sealed record Board(
     static (string?, string?) ActionsChip(AccountInfo? account)
     {
         if (account?.Actions is not { } a) return (null, null);
-        string split = $"This month: {a.Minutes - a.PublicMinutes:N0} min in private repositories, {a.PublicMinutes:N0} min in public ones (free).";
-        if (account.Included is not { } inc)
-            return ($"Actions {a.Minutes:N0} min run this month",
-                $"All repositories, not your free allowance (plan or repository visibility unknown).\n{split}");
+        const string click = "Click for the exact figure on GitHub.";
+        if (account.Included is not { } inc || !a.Known)
+            return ($"Actions {a.Minutes:N0} min this month", "All repositories, public and private: not your free allowance.\n" +
+                (account.Included == null ? "Laneboard doesn't know your plan's free allowance.\n"
+                    : "GitHub counts the allowance by whether each repository was public when its workflows ran. Laneboard notes " +
+                      "that every day and shows the allowance here once it has watched a whole month.\n") + click);
         const double linux = 0.006; // shortcut: GitHub's 2026 Linux 2-core rate, only for the "about N minutes" hint; update if it changes
         return ($"Actions ${a.PrivateCost:0.00} of ${inc:0} free used",
-            $"{split}\nPrivate minutes are charged at each runner's rate (Windows and macOS cost more) against the ${inc:0} " +
-            $"your plan includes each month: about {a.PrivateCost / linux:N0} of {inc / linux:N0} Linux minutes.\n" +
-            "Visibility is today's: a repository made public this month counts as free for the whole month.");
+            $"This month: {a.Minutes - a.PublicMinutes:N0} min in private repositories, {a.PublicMinutes:N0} min in public ones (free).\n" +
+            $"Private minutes are charged at each runner's rate (Windows and macOS cost more) against the ${inc:0} " +
+            $"your plan includes each month: about {a.PrivateCost / linux:N0} of {inc / linux:N0} Linux minutes.\n" + click);
     }
 
     static string S(int n) => n == 1 ? "" : "s";

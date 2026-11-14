@@ -351,12 +351,13 @@
             <TextBlock x:Name="RunnerText" FontSize="11"/>
           </StackPanel>
         </Border>
-        <Border x:Name="MinutesChip" Style="{StaticResource Chip}" Margin="0,0,6,4" Padding="8,3" Visibility="Collapsed">
-          <StackPanel Orientation="Horizontal">
+        <Button x:Name="MinutesChip" Style="{StaticResource Row}" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                Margin="0,0,6,4" Cursor="Hand" Click="OnMinutesChip" Visibility="Collapsed">
+          <StackPanel Orientation="Horizontal" Margin="2,-1">
             <TextBlock Text="&#xE823;" FontFamily="{StaticResource Icons}" FontSize="11" Margin="0,1,6,0"/>
             <TextBlock x:Name="MinutesText" FontSize="11"/>
           </StackPanel>
-        </Border>
+        </Button>
         <Button x:Name="ScopeChip" Style="{StaticResource Row}" Margin="-6,-4,0,0" Click="OnSettings" Visibility="Collapsed"
                 ToolTip="Laneboard can show this month's GitHub Actions minutes once the GitHub CLI may read your billing">
           <TextBlock Text="Show Actions minutes…" FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"/>

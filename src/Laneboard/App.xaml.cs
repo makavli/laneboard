@@ -7,6 +7,9 @@ public partial class App : Application
 {
     public const string Name = "Laneboard";
 
+    /// True inside the Store (MSIX) package: start-with-Windows and notifications then go through the package identity.
+    public static readonly bool Packaged = IsPackaged();
+
     Mutex? _single;
     Tray? _tray;
     MainWindow? _win;
@@ -54,7 +57,7 @@ public partial class App : Application
         };
         new Thread(() => { while (show.WaitOne()) Dispatcher.Invoke(_win.ShowFlyout); }) { IsBackground = true }.Start();
 
-        if (!args.Contains("--tray")) _win.ShowFlyout();
+        if (!args.Contains("--tray") && !StartedAtSignIn()) _win.ShowFlyout();
         await _win.RefreshAsync(true);
     }
 
@@ -66,6 +69,17 @@ public partial class App : Application
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int processId);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern int GetCurrentPackageFullName(ref int length, IntPtr name);
+    static bool IsPackaged() { int n = 0; return GetCurrentPackageFullName(ref n, IntPtr.Zero) != 15700; } // APPMODEL_ERROR_NO_PACKAGE
+
+    /// The package's startup task passes no arguments: Windows says how the app was started instead.
+    static bool StartedAtSignIn()
+    {
+        if (!Packaged) return false;
+        try { return global::Windows.ApplicationModel.AppInstance.GetActivatedEventArgs()?.Kind == global::Windows.ApplicationModel.Activation.ActivationKind.StartupTask; }
+        catch (Exception ex) { Log.Error("activation", ex); return false; }
+    }
 
     static string? Arg(string[] args, string name)
     {

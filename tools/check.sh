@@ -20,6 +20,8 @@ snap solid --theme light --view advanced --solidity 100
 snap settings --theme dark --settings
 if ls build/app/*.error.txt >/dev/null 2>&1; then cat build/app/*.error.txt; exit 1; fi
 
+bash store/build_msix.sh
+
 mkdir -p dist
 if cp build/app/Laneboard.exe dist/Laneboard.exe 2>/dev/null; then
   echo "dist/Laneboard.exe updated"
