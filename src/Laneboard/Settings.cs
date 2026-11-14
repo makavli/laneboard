@@ -8,6 +8,8 @@ public sealed class Settings
 {
     public List<string> Roots { get; set; } = [];
     public List<string> Hidden { get; set; } = [];
+    public List<string> PinnedProjects { get; set; } = []; // repository paths kept at the top
+    public int GitHubMinutes { get; set; } = 5;             // how often GitHub is read (2 min while checks run)
     public bool Pinned { get; set; }
     public string Theme { get; set; } = "System";   // System | Light | Dark
     public string View { get; set; } = "Light";     // Light | Advanced

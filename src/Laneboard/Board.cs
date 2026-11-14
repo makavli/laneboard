@@ -3,11 +3,12 @@ namespace Laneboard;
 /// Turns what was read from disk and GitHub into what the window shows. Pure, so it is unit-tested.
 public sealed record Board(
     IReadOnlyList<ProjectView> Projects, string Summary, string TrayText,
-    IReadOnlyList<string> Warnings, string? RunnerChip, string? MinutesChip, bool NeedsUserScope, bool Badge = false)
+    IReadOnlyList<string> Warnings, string? RunnerChip, string? MinutesChip, bool NeedsUserScope, bool Badge = false, string? MinutesTip = null)
 {
     public static Board Build(IReadOnlyList<LocalInfo> locals, IReadOnlyDictionary<string, RemoteInfo> remote,
-        AccountInfo? account, bool localRunner, DateTimeOffset now, bool canCode)
+        AccountInfo? account, bool localRunner, DateTimeOffset now, bool canCode, IEnumerable<string>? pinned = null)
     {
+        var pins = new HashSet<string>(pinned ?? [], StringComparer.OrdinalIgnoreCase);
         var views = new List<ProjectView>();
         int prTotal = 0;
         foreach (var l in locals)
@@ -40,13 +41,14 @@ public sealed record Board(
                 l.Handoff?.Snippet is { Length: > 0 } s ? s : null,
                 l.HandoffPath == null ? null : $"{System.IO.Path.GetFileName(l.HandoffPath)}{(l.HandoffTime is { } ht ? " · " + Parse.Ago(now - ht) : "")}",
                 l.Handoff?.SafePoint ?? false, l.HandoffPath, l.Slug, touched, l.Git.Changed, canCode,
-                r?.RunnersOnline ?? 0, r?.RunnersTotal ?? 0));
+                r?.RunnersOnline ?? 0, r?.RunnersTotal ?? 0, pins.Contains(l.Path)));
         }
 
         var sorted = views
             .OrderByDescending(v => v.HasWarnings)
             .ThenByDescending(v => v.HasFailing)
             .ThenByDescending(v => v.SafePoint)
+            .ThenByDescending(v => v.Pinned)
             .ThenByDescending(v => v.LastTouched)
             .ToList();
 
@@ -64,15 +66,30 @@ public sealed record Board(
             global.Add("GitHub CLI not found: pull requests and checks are off. Install it from cli.github.com.");
         else if (account is { SignedIn: false })
             global.Add("GitHub CLI is not signed in: run gh auth login, then refresh.");
-        if (account?.Net is > 0)
-            global.Add($"GitHub Actions is billing you ${account.Net:0.00} this month.");
+        if (account?.Actions?.Net is > 0 and var net)
+            global.Add($"GitHub Actions is billing you ${net:0.00} this month.");
 
         int rTotal = remote.Values.Sum(v => v.RunnersTotal), rOnline = remote.Values.Sum(v => v.RunnersOnline);
         string? runner = rTotal > 0 ? $"Runners {rOnline}/{rTotal} online" : localRunner ? "A runner is running on this PC" : null;
-        string? minutes = account?.Minutes is { } m ? $"Actions {m:0} min this month" : null;
+        var (minutes, minutesTip) = ActionsChip(account);
 
-        bool badge = sorted.Any(v => v.Problem) || account?.Net is > 0;
-        return new Board(sorted, summary, tray, global, runner, minutes, account?.NeedsUserScope ?? false, badge);
+        bool badge = sorted.Any(v => v.Problem) || account?.Actions?.Net is > 0;
+        return new Board(sorted, summary, tray, global, runner, minutes, account?.NeedsUserScope ?? false, badge, minutesTip);
+    }
+
+    /// The free allowance is dollars spent at each runner's rate on non-public repos, not raw minutes.
+    static (string?, string?) ActionsChip(AccountInfo? account)
+    {
+        if (account?.Actions is not { } a) return (null, null);
+        string split = $"This month: {a.Minutes - a.PublicMinutes:N0} min in private repositories, {a.PublicMinutes:N0} min in public ones (free).";
+        if (account.Included is not { } inc)
+            return ($"Actions {a.Minutes:N0} min run this month",
+                $"All repositories, not your free allowance (plan or repository visibility unknown).\n{split}");
+        const double linux = 0.006; // shortcut: GitHub's 2026 Linux 2-core rate, only for the "about N minutes" hint; update if it changes
+        return ($"Actions ${a.PrivateCost:0.00} of ${inc:0} free used",
+            $"{split}\nPrivate minutes are charged at each runner's rate (Windows and macOS cost more) against the ${inc:0} " +
+            $"your plan includes each month: about {a.PrivateCost / linux:N0} of {inc / linux:N0} Linux minutes.\n" +
+            "Visibility is today's: a repository made public this month counts as free for the whole month.");
     }
 
     static string S(int n) => n == 1 ? "" : "s";

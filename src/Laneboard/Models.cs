@@ -8,7 +8,8 @@ public sealed record LocalInfo(
 
 public sealed record RemoteInfo(string Visibility, IReadOnlyList<PrView> Prs, int PrTotal, int RunnersTotal, int RunnersOnline);
 
-public sealed record AccountInfo(bool GhFound, bool SignedIn, string? Login, double? Minutes, double? Net, bool NeedsUserScope);
+/// Included = the plan's monthly Actions allowance in dollars, null when the plan or the repos' visibility is unknown.
+public sealed record AccountInfo(bool GhFound, bool SignedIn, string? Login, Parse.ActionsUse? Actions, double? Included, bool NeedsUserScope);
 
 public sealed record PrView(int Number, string Title, string Url, string State, bool Draft)
 {
@@ -20,13 +21,22 @@ public sealed record ProjectView(
     string Name, string Path, string Branch, bool IsPublic, string StatusLine, string? StatusTip,
     IReadOnlyList<string> Warnings, IReadOnlyList<PrView> Prs, string? MorePrs,
     string? Handoff, string? HandoffMeta, bool SafePoint, string? HandoffPath,
-    string? Slug, DateTimeOffset LastTouched, int Changed, bool CanCode, int RunnersOnline = 0, int RunnersTotal = 0)
+    string? Slug, DateTimeOffset LastTouched, int Changed, bool CanCode, int RunnersOnline = 0, int RunnersTotal = 0,
+    bool Pinned = false)
 {
     /// Something is wrong: it puts the badge on the tray icon.
     public bool Problem => HasWarnings || HasFailing;
     /// Waits for the user: a problem, or a session stopped at a safe point. Listed first, under "Needs you".
     public bool NeedsYou => Problem || SafePoint;
-    public string Group => NeedsYou ? "Needs you" : "Other projects";
+    /// "Needs you" wins over "Pinned": a pinned project with a problem moves up to where problems are.
+    public string Group => NeedsYou ? "Needs you" : Pinned ? "Pinned" : "Other projects";
+    public string PinLabel => Pinned ? "Unpin" : "Pin to top";
+
+    /// What a screen reader says for the project, since the coloured dot alone carries the check state.
+    public string SpokenName =>
+        $"{Name}, {Branch}, {LightLine}" +
+        (WorstState switch { "pass" => ", checks passing", "pending" => ", checks running", _ => "" }) +
+        (HasWarnings ? ", warning: " + string.Join(" ", Warnings) : "");
     public bool HasWarnings => Warnings.Count > 0;
     public bool HasPrs => Prs.Count > 0;
     public bool HasMorePrs => MorePrs != null;

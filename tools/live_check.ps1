@@ -8,11 +8,13 @@ $out = Join-Path $root 'build\app'
 $exe = if ($env:LIVE_EXE) { $env:LIVE_EXE } else { Join-Path $out 'Laneboard.exe' }
 if (-not (Test-Path $exe)) { Write-Output 'FAIL: build\app\Laneboard.exe missing (run tools/check.sh first)'; exit 1 }
 
-Add-Type -AssemblyName System.Drawing, System.Windows.Forms
+Add-Type -AssemblyName System.Drawing, System.Windows.Forms, UIAutomationClient, UIAutomationTypes
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
 using System; using System.Drawing; using System.Runtime.InteropServices;
 public static class Win {
   [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   public struct RECT { public int L, T, R, B; }
@@ -71,12 +73,42 @@ try {
     Start-Sleep -Seconds 5
     [Win]::Save($h, (Join-Path $out 'live-after.png'))
 
+    # Screen readers: every button has a spoken name (never empty, never an icon glyph); projects are list items.
+    $uia = [System.Windows.Automation.AutomationElement]::FromHandle($h)
+    $all = @($uia.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition))
+    $btn = [System.Windows.Automation.ControlType]::Button
+    $glyphs = "[$([char]0xE000)-$([char]0xF8FF)]"  # icon fonts use the private-use area
+    $mute = @($all | Where-Object { $_.Current.ControlType -eq $btn -and ($_.Current.Name -eq '' -or $_.Current.Name -match $glyphs) })
+    $items = @($all | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem } | ForEach-Object { $_.Current.Name })
+    Write-Output ("uia     {0} buttons, {1} unnamed; list items: {2}" -f @($all | Where-Object { $_.Current.ControlType -eq $btn }).Count, $mute.Count, ($items -join ' | '))
+    if ($mute.Count) { $fail += "$($mute.Count) button(s) without a spoken name" }
+    if (-not ($items | Where-Object { $_ -like 'sample-project, main, 1 changed*' })) { $fail += 'the project is not a named list item' }
+
+    # Keyboard: the filter box has the focus on open, and Down moves into the list. Only when the window is in front:
+    # keys are posted to its own handle, never typed into whatever the user is working in.
+    if ([Win]::GetForegroundWindow() -eq $h) {
+        $f0 = [System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
+        [void][Win]::PostMessage($h, 0x0100, [IntPtr]0x28, [IntPtr]0)  # WM_KEYDOWN, VK_DOWN
+        Start-Sleep -Milliseconds 500
+        $f1 = [System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
+        Write-Output "focus   '$f0' then, after Down, '$f1'"
+        if ($f0 -ne 'Filter projects') { $fail += "focus on open is '$f0', not the filter box" }
+        if ($f1 -notlike 'sample-project*') { $fail += "Down did not move into the list (focus '$f1')" }
+    }
+    else { Write-Output 'focus   skipped: another window is in front' }
+
     # Notification: a new safe point in the handoff adds a toast to the notification centre (kept there under Do not disturb too).
     Set-Content -Path (Join-Path $proj 'HANDOFF.md') -Value "# Handoff`n`nSAFE POINT: the live check wrote a new one.`n"
     Start-Sleep -Seconds 4
     $toasts = ToastCount
     Write-Output "toasts  $toastsBefore before, $toasts after"
     if ($toasts -le $toastsBefore) { $fail += 'no toast for the new safe point' }
+    # That safe point redrew every row: the project the keyboard was on must still have the focus.
+    if ($f1 -like 'sample-project*' -and [Win]::GetForegroundWindow() -eq $h) {
+        $f2 = [System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name
+        Write-Output "focus   after the redraw '$f2'"
+        if ($f2 -notlike 'sample-project*') { $fail += "a redraw took the focus off the project ('$f2')" }
+    }
     if ($p.HasExited) { $fail += 'the app exited during the check' }
     else {
         $p.Refresh()

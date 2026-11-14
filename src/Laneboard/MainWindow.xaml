@@ -24,6 +24,8 @@
       <Setter Property="FontSize" Value="14"/>
       <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
       <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
+      <!-- The content is a glyph: a screen reader would read a private-use character, so it reads the tooltip. -->
+      <Setter Property="AutomationProperties.Name" Value="{Binding ToolTip, RelativeSource={RelativeSource Self}}"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
@@ -49,6 +51,7 @@
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
       <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="AutomationProperties.Name" Value="{Binding ToolTip, RelativeSource={RelativeSource Self}}"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
@@ -100,8 +103,9 @@
       <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
     </Style>
 
-    <!-- The menu every project has on right click. -->
-    <ContextMenu x:Key="ProjectMenu" x:Shared="False">
+    <!-- The menu every project has on right click, Shift+F10 or the menu key. One instance serves every row,
+         so it reads the project from the row it opened on. -->
+    <ContextMenu x:Key="ProjectMenu" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
       <MenuItem Header="Open folder" Tag="folder" Click="OnAction"/>
       <MenuItem Header="Open in VS Code" Tag="code" Click="OnAction" Visibility="{Binding CanCode, Converter={StaticResource Vis}}"/>
       <MenuItem Header="Open terminal here" Tag="terminal" Click="OnAction"/>
@@ -109,8 +113,56 @@
       <MenuItem Header="Open the handoff note" Tag="handoff" Click="OnAction" Visibility="{Binding HasHandoff, Converter={StaticResource Vis}}"/>
       <MenuItem Header="Copy path" Tag="copy" Click="OnAction"/>
       <Separator/>
+      <MenuItem Header="{Binding PinLabel}" Tag="pin" Click="OnAction"/>
       <MenuItem Header="Hide this project" Tag="hide" Click="OnAction"/>
     </ContextMenu>
+
+    <!-- A project in the list: arrow keys move between projects, Enter opens one, the menu key opens its menu.
+         The ring shows only for the keyboard; the two views differ in spacing and corner. -->
+    <Style x:Key="Item" TargetType="ListBoxItem">
+      <Setter Property="ContextMenu" Value="{StaticResource ProjectMenu}"/>
+      <Setter Property="AutomationProperties.Name" Value="{Binding SpokenName}"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <ContentPresenter/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="RowItem" TargetType="ListBoxItem" BasedOn="{StaticResource Item}">
+      <Setter Property="Margin" Value="8,0,8,2"/>
+      <Setter Property="FocusVisualStyle">
+        <Setter.Value>
+          <Style>
+            <Setter Property="Control.Template">
+              <Setter.Value>
+                <ControlTemplate>
+                  <Rectangle RadiusX="6" RadiusY="6" StrokeThickness="2" Stroke="{DynamicResource FocusStrokeColorOuterBrush}"/>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="CardItem" TargetType="ListBoxItem" BasedOn="{StaticResource Item}">
+      <Setter Property="Margin" Value="12,0,12,10"/>
+      <Setter Property="FocusVisualStyle">
+        <Setter.Value>
+          <Style>
+            <Setter Property="Control.Template">
+              <Setter.Value>
+                <ControlTemplate>
+                  <Rectangle RadiusX="8" RadiusY="8" StrokeThickness="2" Stroke="{DynamicResource FocusStrokeColorOuterBrush}"/>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+        </Setter.Value>
+      </Setter>
+    </Style>
 
     <!-- Open buttons: hidden until the pointer (or the keyboard) is on the project. -->
     <DataTemplate x:Key="Actions">
@@ -161,8 +213,7 @@
 
     <!-- LIGHT view: one airy row per project, the essentials only. -->
     <DataTemplate x:Key="RowTemplate">
-      <Border x:Name="Bd" Margin="8,0,8,2" Padding="12,10,6,10" CornerRadius="6" Background="Transparent"
-              ContextMenu="{StaticResource ProjectMenu}">
+      <Border x:Name="Bd" Padding="12,10,6,10" CornerRadius="6" Background="Transparent">
         <DockPanel>
           <Ellipse x:Name="Dot" Width="8" Height="8" Margin="2,0,12,0" VerticalAlignment="Center"
                    Fill="{DynamicResource TextFillColorTertiaryBrush}" Opacity="0.5"/>
@@ -188,9 +239,9 @@
           <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
           <Setter TargetName="Act" Property="Opacity" Value="1"/>
         </Trigger>
-        <Trigger SourceName="Bd" Property="IsKeyboardFocusWithin" Value="True">
+        <DataTrigger Binding="{Binding IsKeyboardFocusWithin, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
           <Setter TargetName="Act" Property="Opacity" Value="1"/>
-        </Trigger>
+        </DataTrigger>
         <DataTrigger Binding="{Binding WorstState}" Value="pass">
           <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource SystemFillColorSuccessBrush}"/>
           <Setter TargetName="Dot" Property="Opacity" Value="1"/>
@@ -208,8 +259,7 @@
 
     <!-- ADVANCED view: the full card. -->
     <DataTemplate x:Key="CardTemplate">
-      <Border x:Name="Bd" Style="{StaticResource Card}" Margin="12,0,12,10" Padding="16,12,8,12"
-              ContextMenu="{StaticResource ProjectMenu}">
+      <Border x:Name="Bd" Style="{StaticResource Card}" Padding="16,12,8,12">
         <StackPanel>
           <DockPanel>
             <ContentControl x:Name="Act" DockPanel.Dock="Right" Content="{Binding}" ContentTemplate="{StaticResource Actions}"
@@ -256,9 +306,9 @@
         <Trigger SourceName="Bd" Property="IsMouseOver" Value="True">
           <Setter TargetName="Act" Property="Opacity" Value="1"/>
         </Trigger>
-        <Trigger SourceName="Bd" Property="IsKeyboardFocusWithin" Value="True">
+        <DataTrigger Binding="{Binding IsKeyboardFocusWithin, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
           <Setter TargetName="Act" Property="Opacity" Value="1"/>
-        </Trigger>
+        </DataTrigger>
       </DataTemplate.Triggers>
     </DataTemplate>
   </Window.Resources>
@@ -325,8 +375,17 @@
 
     <ScrollViewer x:Name="ListScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Margin="0,0,0,10">
-        <ItemsControl x:Name="Cards" ItemTemplate="{StaticResource RowTemplate}" Focusable="False">
-          <ItemsControl.GroupStyle>
+        <!-- A list (not a plain ItemsControl) for arrow keys, type-to-find and screen readers. No scroll viewer of its
+             own: the outer one scrolls, and a nested one would swallow the mouse wheel. -->
+        <ListBox x:Name="Cards" ItemTemplate="{StaticResource RowTemplate}" ItemContainerStyle="{StaticResource RowItem}"
+                 TextSearch.TextPath="Name" KeyboardNavigation.TabNavigation="Continue"
+                 AutomationProperties.Name="Projects">
+          <ListBox.Template>
+            <ControlTemplate TargetType="ListBox">
+              <ItemsPresenter/>
+            </ControlTemplate>
+          </ListBox.Template>
+          <ListBox.GroupStyle>
             <GroupStyle>
               <GroupStyle.HeaderTemplate>
                 <DataTemplate>
@@ -334,8 +393,8 @@
                 </DataTemplate>
               </GroupStyle.HeaderTemplate>
             </GroupStyle>
-          </ItemsControl.GroupStyle>
-        </ItemsControl>
+          </ListBox.GroupStyle>
+        </ListBox>
         <TextBlock x:Name="NoMatch" Text="No project matches." Style="{StaticResource Secondary}" HorizontalAlignment="Center"
                    Margin="0,24,0,0" Visibility="Collapsed"/>
       </StackPanel>
@@ -414,6 +473,17 @@
             <CheckBox x:Name="NotifyBox" Margin="0,6,0,0" Checked="OnNotifyBox" Unchecked="OnNotifyBox">
               <TextBlock TextWrapping="Wrap" Text="Notify me when checks fail or pass, a safe point is written, or a runner goes offline"/>
             </CheckBox>
+            <DockPanel Margin="0,10,0,0">
+              <ComboBox x:Name="IntervalBox" DockPanel.Dock="Right" MinWidth="120" SelectionChanged="OnInterval"
+                        AutomationProperties.Name="Read GitHub every">
+                <ComboBoxItem Content="2 minutes" Tag="2"/>
+                <ComboBoxItem Content="5 minutes" Tag="5"/>
+                <ComboBoxItem Content="15 minutes" Tag="15"/>
+                <ComboBoxItem Content="30 minutes" Tag="30"/>
+              </ComboBox>
+              <TextBlock Text="Read GitHub every" VerticalAlignment="Center" TextWrapping="Wrap"
+                         ToolTip="Pull requests, checks and runners. Every 2 minutes while checks run. Files on this PC update at once."/>
+            </DockPanel>
           </StackPanel>
         </Border>
 

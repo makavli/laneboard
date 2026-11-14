@@ -32,6 +32,6 @@ static class Demo
             ["studio/tidewatch-api"] = new("PRIVATE", [P(31, "Per-key rate limits", "pass", true)], 1, 0, 0),
             ["studio/studio-site"] = new("PUBLIC", [], 0, 0, 0),
         };
-        return (locals, remote, new AccountInfo(true, true, "studio", 412, 0, false));
+        return (locals, remote, new AccountInfo(true, true, "studio", new(412, 160, 2.35, 0), 12, false));
     }
 }

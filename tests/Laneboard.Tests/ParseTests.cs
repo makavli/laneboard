@@ -71,18 +71,36 @@ public class ParseTests
     }
 
     [Fact]
-    public void Actions_usage_sums_minutes_and_net_amount()
+    public void Actions_usage_counts_only_non_public_compute_against_the_allowance()
     {
         using var doc = JsonDocument.Parse("""
         {"usageItems":[
-          {"product":"actions","unitType":"Minutes","quantity":120.5,"netAmount":0},
-          {"product":"Actions","unitType":"minutes","quantity":10,"netAmount":0.8},
-          {"product":"actions","unitType":"GigabyteHours","quantity":3,"netAmount":0.1},
-          {"product":"packages","unitType":"Minutes","quantity":999,"netAmount":5}]}
+          {"product":"actions","sku":"Actions Linux","unitType":"Minutes","quantity":100,"grossAmount":0.6,"netAmount":0,"repositoryName":"secret"},
+          {"product":"Actions","sku":"Actions Windows","unitType":"minutes","quantity":10,"grossAmount":0.1,"netAmount":0.8,"repositoryName":"gone"},
+          {"product":"actions","sku":"Actions macOS 3-core","unitType":"Minutes","quantity":20.5,"grossAmount":1.271,"netAmount":0,"repositoryName":"Open"},
+          {"product":"actions","sku":"Actions storage","unitType":"GigabyteHours","quantity":3,"grossAmount":9,"netAmount":0.1,"repositoryName":"secret"},
+          {"product":"git_lfs","unitType":"Minutes","quantity":999,"grossAmount":9,"netAmount":5}]}
         """);
-        var (min, net) = Parse.ActionsUsage(doc.RootElement);
-        Assert.Equal(130.5, min);
-        Assert.Equal(0.9, net, 6);
+        var a = Parse.ActionsUsage(doc.RootElement, new HashSet<string>(["open"], StringComparer.OrdinalIgnoreCase));
+        Assert.Equal(130.5, a.Minutes);
+        Assert.Equal(20.5, a.PublicMinutes);
+        Assert.Equal(0.7, a.PrivateCost, 6); // "gone" is not listed as public, so it counts
+        Assert.Equal(0.9, a.Net, 6);
+        Assert.Equal(12, Parse.IncludedActions("free"));
+        Assert.Null(Parse.IncludedActions("team"));
+    }
+
+    [Fact]
+    public void Actions_chip_says_used_of_free_or_plainly_all_minutes()
+    {
+        var use = new Parse.ActionsUse(1343, 677, 6.47, 0);
+        var b = Board.Build([], new Dictionary<string, RemoteInfo>(), new(true, true, "me", use, 12, false), false, DateTimeOffset.Now, false);
+        Assert.Equal($"Actions ${6.47:0.00} of $12 free used", b.MinutesChip);
+        Assert.Contains($"{666:N0} min in private", b.MinutesTip);
+        Assert.Contains($"about {1078:N0} of {2000:N0} Linux minutes", b.MinutesTip);
+        var plain = Board.Build([], new Dictionary<string, RemoteInfo>(), new(true, true, "me", use, null, false), false, DateTimeOffset.Now, false);
+        Assert.Equal($"Actions {1343:N0} min run this month", plain.MinutesChip);
+        Assert.StartsWith("All repositories, not your free allowance", plain.MinutesTip);
     }
 }
 
@@ -102,7 +120,7 @@ public class BoardTests
             ["o/public"] = new("PUBLIC", [], 0, 1, 1),
             ["o/failing"] = new("PRIVATE", [new(1, "x", "https://github.com/o/failing/pull/1", "fail", false)], 3, 0, 0),
         };
-        var b = Board.Build(locals, remote, new(true, true, "o", 10, 1.5, false), false, Now, false);
+        var b = Board.Build(locals, remote, new(true, true, "o", new(10, 0, 0.06, 1.5), 12, false), false, Now, false);
 
         Assert.Equal(["public", "failing", "recent", "old"], b.Projects.Select(p => p.Name));
         Assert.Contains("self-hosted runner", b.Projects[0].Warnings[0]);
@@ -111,6 +129,23 @@ public class BoardTests
         Assert.Equal("Laneboard · 1 failing check", b.TrayText);
         Assert.Equal("Runners 1/1 online", b.RunnerChip);
         Assert.Contains(b.Warnings, w => w.Contains("$1.50"));
+    }
+
+    [Fact]
+    public void Pinned_projects_come_after_needs_you_and_before_the_rest()
+    {
+        var locals = new[] { L("recent", hours: 1), L("pinned", hours: 90), L("failing", hours: 80, slug: "o/failing") };
+        var remote = new Dictionary<string, RemoteInfo>
+        {
+            ["o/failing"] = new("PRIVATE", [new(1, "x", "https://github.com/o/failing/pull/1", "fail", false)], 1, 0, 0),
+        };
+        var b = Board.Build(locals, remote, null, false, Now, false, [@"c:\P\PINNED", @"C:\p\failing"]);
+
+        Assert.Equal(["failing", "pinned", "recent"], b.Projects.Select(p => p.Name));
+        Assert.Equal(["Needs you", "Pinned", "Other projects"], b.Projects.Select(p => p.Group));
+        Assert.Equal("Unpin", b.Projects[1].PinLabel);
+        Assert.Equal("Pin to top", b.Projects[2].PinLabel);
+        Assert.Equal("recent, main, clean", b.Projects[2].SpokenName);
     }
 
     [Fact]
