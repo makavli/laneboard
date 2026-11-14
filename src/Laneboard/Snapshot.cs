@@ -12,7 +12,7 @@ static class Snapshot
     {
         try
         {
-            var s = demo ? new Settings { Roots = ["demo"], PinnedProjects = [@"C:\dev\tidewatch-api"] } : Settings.Load();
+            var s = demo ? new Settings { Roots = [@"C:\dev"], PinnedProjects = [@"C:\dev\tidewatch-api"] } : Settings.Load();
             if (theme is "dark" or "light") s.Theme = theme == "dark" ? "Dark" : "Light";
             if (view is "advanced" or "light") s.View = view == "advanced" ? "Advanced" : "Light";
             if (solidity is { } so) s.Solidity = so;

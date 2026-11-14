@@ -20,7 +20,7 @@ public partial class MainWindow : Window
     readonly VisibilityLog _visibility = VisibilityLog.Load();
     List<ProjectView> _views = [];
     DateTime _lastLocal = DateTime.MinValue, _lastRemote = DateTime.MinValue, _hiddenAt = DateTime.MinValue;
-    bool _busy, _allowClose, _dialogOpen, _placed, _syncing;
+    bool _busy, _again, _againFull, _allowClose, _dialogOpen, _placed, _syncing;
 
     TimeSpan RemoteEvery => TimeSpan.FromMinutes(Math.Clamp(_s.GitHubMinutes, 1, 60));
     Board? _board;
@@ -152,12 +152,12 @@ public partial class MainWindow : Window
         UpdateAgo();
         var now = DateTime.UtcNow;
         bool due = now - _lastLocal >= (IsVisible ? TimeSpan.FromSeconds(55) : RemoteEvery) || now - _lastRemote >= RemoteDue;
-        if (due) await RefreshAsync(false);
+        if (due && !_busy) await RefreshAsync(false);
     }
 
     public async Task RefreshAsync(bool full)
     {
-        if (_busy) return;
+        if (_busy) { _again = true; _againFull |= full; return; } // asked while reading (a folder added, F5): read again after
         _busy = true;
         RefreshBtn.IsEnabled = false;
         try
@@ -169,7 +169,8 @@ public partial class MainWindow : Window
             }
             else
             {
-                var paths = await Task.Run(() => Scanner.Discover(_s.Roots, _s.Hidden));
+                List<string> roots = [.. _s.Roots], hidden = [.. _s.Hidden]; // the settings page may change the lists meanwhile
+                var paths = await Task.Run(() => Scanner.Discover(roots, hidden));
                 _watch.Sync(paths);
                 _watch.TakeDirty(); // this full read covers every pending change
                 _locals = await Scanner.ReadAll(paths);
@@ -179,9 +180,13 @@ public partial class MainWindow : Window
                     var account = GitHub.Account(_visibility);
                     var repos = GitHub.Repos(slugs);
                     await Task.WhenAll(account, repos);
-                    _account = account.Result;
+                    _account = account.Result ?? _account; // null: offline or timed out, keep what we knew
                     if (!_s.ReadOnly) _visibility.Save();
-                    _remote = repos.Result;
+                    // A failed or timed-out read keeps each repository's last known pull requests instead of blanking them.
+                    var fresh = repos.Result;
+                    foreach (var s in slugs)
+                        if (!fresh.ContainsKey(s) && _remote.TryGetValue(s, out var old)) fresh[s] = old;
+                    _remote = fresh;
                     _lastRemote = DateTime.UtcNow;
                 }
             }
@@ -192,7 +197,16 @@ public partial class MainWindow : Window
         {
             _busy = false;
             RefreshBtn.IsEnabled = true;
+            RunPending();
         }
+    }
+
+    void RunPending()
+    {
+        if (!_again) return;
+        bool full = _againFull;
+        _again = _againFull = false;
+        _ = RefreshAsync(full);
     }
 
     /// Re-reads only the repositories whose files changed (the watcher's list), then redraws.
@@ -209,7 +223,7 @@ public partial class MainWindow : Window
             _locals = _locals.Select(l => fresh.TryGetValue(l.Path, out var f) ? f : l).ToList();
             Render();
         }
-        finally { _busy = false; }
+        finally { _busy = false; RunPending(); }
     }
 
     void Render()
@@ -225,7 +239,8 @@ public partial class MainWindow : Window
         MinutesChip.ToolTip = board.MinutesTip;
         ScopeChip.Visibility = board.NeedsUserScope ? Visibility.Visible : Visibility.Collapsed;
         ScopePanel.Visibility = ScopeChip.Visibility;
-        GlobalWarnings.ItemsSource = board.Warnings;
+        GlobalWarnings.ItemsSource = _demo ? board.Warnings
+            : board.Warnings.Concat(_s.Roots.Where(r => !System.IO.Directory.Exists(r)).Select(r => $"Folder not found: {r}")).ToList();
 
         GitHubStatus.Text = _account switch
         {
@@ -257,8 +272,13 @@ public partial class MainWindow : Window
         if (shown.Any(v => v.NeedsYou || v.Pinned)) cv.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(nameof(ProjectView.Group)));
         // A redraw replaces every row: the project the keyboard was on keeps the focus.
         var keep = Cards.IsKeyboardFocusWithin && Keyboard.FocusedElement is FrameworkElement { DataContext: ProjectView f } ? f.Path : null;
+        double scrolled = ListScroll.VerticalOffset; // new rows must not throw the reader back to the top
         Cards.ItemsSource = cv;
-        if (keep != null) Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => FocusRow(keep));
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            ListScroll.ScrollToVerticalOffset(scrolled);
+            if (keep != null) FocusRow(keep);
+        });
         NoMatch.Visibility = shown.Count == 0 && _views.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         SearchHint.Visibility = Search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
     }

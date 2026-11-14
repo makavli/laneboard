@@ -26,7 +26,13 @@ public sealed class Settings
     public static Settings Load()
     {
         if (!File.Exists(FilePath)) return new Settings { Roots = GuessRoots() };
-        try { return JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new(); }
+        try
+        {
+            var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new();
+            s.Roots ??= []; s.Hidden ??= []; s.PinnedProjects ??= []; // "Roots": null in a hand-edited file
+            return s;
+        }
+        catch (UnauthorizedAccessException) { return new(); }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
             // Keep the broken file for the user instead of overwriting it on the next save.

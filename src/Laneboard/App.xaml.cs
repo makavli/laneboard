@@ -33,8 +33,8 @@ public partial class App : Application
         }
 
         // One instance per user: a second launch just brings the first one forward.
-        // A test run (--root) gets its own lock, so it can run beside the user's copy without touching it.
-        var lane = $"{Environment.UserName}{(Arg(args, "--root") != null ? ".test" : "")}";
+        // A test or demo run gets its own lock, so it can run beside the user's copy without touching it.
+        var lane = $"{Environment.UserName}{(Arg(args, "--root") != null || demo ? ".test" : "")}";
         _single = new Mutex(true, $"{Name}.Single.{lane}", out bool first);
         var show = new EventWaitHandle(false, EventResetMode.AutoReset, $"{Name}.Show.{lane}");
         if (!first)
@@ -45,9 +45,13 @@ public partial class App : Application
             return;
         }
 
-        var settings = Settings.Load();
+        // A demo shows made-up projects and folders, never the user's.
+        var settings = demo ? new Settings { Roots = [@"C:\dev"], PinnedProjects = [@"C:\dev\tidewatch-api"] } : Settings.Load();
         if (Arg(args, "--root") is { } root) { settings.Roots = [root]; settings.Hidden = []; settings.ReadOnly = true; }
         if (args.Contains("--pinned")) { settings.Pinned = true; settings.ReadOnly = true; }
+        if (demo) settings.ReadOnly = true; // and never saves over the user's settings
+        if (Arg(args, "--theme") is "dark" or "light") settings.Theme = Arg(args, "--theme") == "dark" ? "Dark" : "Light";
+        if (Arg(args, "--view") is "advanced" or "light") settings.View = Arg(args, "--view") == "advanced" ? "Advanced" : "Light";
         _win = new MainWindow(settings, demo);
         _tray = new Tray(_win, Quit);
         _win.BoardChanged += (board, alert) =>
