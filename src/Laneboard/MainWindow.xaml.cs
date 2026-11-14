@@ -220,6 +220,7 @@ public partial class MainWindow : Window
         RunnerText.Text = board.RunnerChip ?? "";
         MinutesChip.Visibility = board.MinutesChip == null ? Visibility.Collapsed : Visibility.Visible;
         MinutesText.Text = board.MinutesChip ?? "";
+        MinutesChip.ToolTip = board.MinutesTip;
         ScopeChip.Visibility = board.NeedsUserScope ? Visibility.Visible : Visibility.Collapsed;
         ScopePanel.Visibility = ScopeChip.Visibility;
         GlobalWarnings.ItemsSource = board.Warnings;

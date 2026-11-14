@@ -59,9 +59,10 @@ public static class GitHub
 
     public static async Task<AccountInfo> Account()
     {
-        var u = await Proc.Run("gh", null, ["api", "user", "-q", ".login"]);
+        var u = await Proc.Run("gh", null, ["api", "user", "-q", ".login + \" \" + (.plan.name // \"\")"]);
         if (u.Code == -1) return new(false, false, null, null, null, false);
-        var login = u.Out.Trim();
+        var parts = u.Out.Trim().Split(' ');
+        var login = parts[0];
         if (u.Code != 0 || !Safe.IsMatch(login)) return new(true, false, null, null, null, false);
 
         var now = DateTime.Now;
@@ -72,8 +73,11 @@ public static class GitHub
             try
             {
                 using var doc = JsonDocument.Parse(b.Out);
-                var (min, net) = Parse.ActionsUsage(doc.RootElement);
-                return new(true, true, login, min, net, false);
+                // Usage items name the repo without its owner; public ones are free. Visibility is today's.
+                var p = await Proc.Run("gh", null, ["repo", "list", "--visibility", "public", "--limit", "1000", "--json", "name", "-q", ".[].name"]);
+                var pub = p.Out.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                double? included = p.Code == 0 && parts.Length > 1 ? Parse.IncludedActions(parts[1]) : null;
+                return new(true, true, login, Parse.ActionsUsage(doc.RootElement, pub), included, false);
             }
             catch (JsonException) { }
         }

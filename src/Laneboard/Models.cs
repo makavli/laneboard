@@ -8,7 +8,8 @@ public sealed record LocalInfo(
 
 public sealed record RemoteInfo(string Visibility, IReadOnlyList<PrView> Prs, int PrTotal, int RunnersTotal, int RunnersOnline);
 
-public sealed record AccountInfo(bool GhFound, bool SignedIn, string? Login, double? Minutes, double? Net, bool NeedsUserScope);
+/// Included = the plan's monthly Actions allowance in dollars, null when the plan or the repos' visibility is unknown.
+public sealed record AccountInfo(bool GhFound, bool SignedIn, string? Login, Parse.ActionsUse? Actions, double? Included, bool NeedsUserScope);
 
 public sealed record PrView(int Number, string Title, string Url, string State, bool Draft)
 {

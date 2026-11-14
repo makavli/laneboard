@@ -124,19 +124,33 @@ public static class Parse
         return new RemoteInfo(Str(repo, "visibility"), prs, total, 0, 0);
     }
 
-    /// GitHub's billing usage report for one month -> Actions minutes and what is actually billed.
-    public static (double Minutes, double Net) ActionsUsage(JsonElement root)
+    /// Minutes = all minutes run; PrivateCost = what the non-public ones cost at each runner's rate, which is what the
+    /// plan's dollar allowance pays for (public repos on standard runners are free); Net = what is actually billed.
+    public sealed record ActionsUse(double Minutes, double PublicMinutes, double PrivateCost, double Net);
+
+    /// GitHub's billing usage report for one month. A repo not in publicRepos counts as private (the safe side).
+    public static ActionsUse ActionsUsage(JsonElement root, IReadOnlySet<string> publicRepos)
     {
-        double minutes = 0, net = 0;
+        double minutes = 0, pub = 0, cost = 0, net = 0;
         if (root.TryGetProperty("usageItems", out var items) && items.ValueKind == JsonValueKind.Array)
             foreach (var it in items.EnumerateArray())
             {
                 if (!Str(it, "product").Equals("actions", StringComparison.OrdinalIgnoreCase)) continue;
-                if (Str(it, "unitType").Equals("minutes", StringComparison.OrdinalIgnoreCase)) minutes += Num(it, "quantity");
                 net += Num(it, "netAmount");
+                if (!Str(it, "unitType").Equals("minutes", StringComparison.OrdinalIgnoreCase)) continue; // storage has its own allowance
+                double q = Num(it, "quantity");
+                minutes += q;
+                if (publicRepos.Contains(Str(it, "repositoryName"))) pub += q;
+                else cost += Num(it, "grossAmount");
             }
-        return (minutes, net);
+        return new(minutes, pub, cost, net);
     }
+
+    /// Monthly included Actions compute in dollars by plan (docs.github.com, billing for GitHub Actions).
+    public static double? IncludedActions(string plan) => plan.ToLowerInvariant() switch
+    {
+        "free" => 12, "pro" => 18, _ => null,
+    };
 
     static string Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
