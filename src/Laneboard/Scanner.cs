@@ -12,7 +12,7 @@ public static class Scanner
 
         void Walk(string dir, int depth)
         {
-            if (IsRepo(dir)) { found.Add(Path.GetFullPath(dir).TrimEnd('\\')); return; }
+            if (IsRepo(dir)) { found.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir))); return; }
             if (depth >= 2) return;
             IEnumerable<string> subs;
             try { subs = Directory.EnumerateDirectories(dir).ToList(); }
@@ -22,7 +22,7 @@ public static class Scanner
                 var name = Path.GetFileName(s);
                 if (name.StartsWith('.') || name is "node_modules" or "bin" or "obj") continue;
                 try { if (new DirectoryInfo(s).Attributes.HasFlag(FileAttributes.ReparsePoint)) continue; }
-                catch (IOException) { continue; }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
                 Walk(s, depth + 1);
             }
         }
@@ -32,6 +32,10 @@ public static class Scanner
         return found.Distinct(StringComparer.OrdinalIgnoreCase).Where(p => !skip.Contains(p)).ToList();
     }
 
+    // A folder the user didn't clone (an unpacked archive) brings its own .git/config: never let it run a command.
+    // --no-optional-locks: never take index.lock, so we cannot collide with the user's own git commands.
+    static readonly string[] SafeGit = ["-c", "core.fsmonitor=false", "--no-optional-locks"];
+
     static bool IsRepo(string d) => Directory.Exists(Path.Combine(d, ".git")) || File.Exists(Path.Combine(d, ".git"));
 
     public static async Task<List<LocalInfo>> ReadAll(IReadOnlyList<string> paths)
@@ -40,7 +44,7 @@ public static class Scanner
         var tasks = paths.Select(async p =>
         {
             await gate.WaitAsync();
-            try { return await Read(p); }
+            try { return await Task.Run(() => Read(p)); }
             finally { gate.Release(); }
         });
         return (await Task.WhenAll(tasks)).ToList();
@@ -49,10 +53,10 @@ public static class Scanner
     public static async Task<LocalInfo> Read(string path)
     {
         var name = Path.GetFileName(path);
+        if (!Directory.Exists(path))
+            return new(path, name, new("?", 0, 0, 0, false), null, null, null, null, null, null, "Folder not found: it was moved or deleted.");
         var (handoff, handoffPath, handoffTime) = ReadHandoff(path);
-
-        // --no-optional-locks: never take index.lock, so we cannot collide with the user's own git commands.
-        var st = await Proc.Run("git", path, ["--no-optional-locks", "status", "--porcelain=v2", "--branch"]);
+        var st = await Proc.Run("git", path, [.. SafeGit, "status", "--porcelain=v2", "--branch"]);
         if (st.Code == -1)
             return new(path, name, new("?", 0, 0, 0, false), null, null, null, handoff, handoffPath, handoffTime, "Git not found: install Git for Windows.");
         if (st.Code != 0)
@@ -62,7 +66,7 @@ public static class Scanner
         }
         var git = Parse.PorcelainV2(st.Out);
 
-        var log = await Proc.Run("git", path, ["--no-optional-locks", "log", "-1", "--format=%ct%x1f%s"]);
+        var log = await Proc.Run("git", path, [.. SafeGit, "log", "-1", "--format=%ct%x1f%s"]);
         DateTimeOffset? last = null; string? subject = null;
         if (log.Code == 0 && log.Out.Split('\x1f') is [var ct, var s] && long.TryParse(ct.Trim(), out var unix))
         {
@@ -70,7 +74,7 @@ public static class Scanner
             subject = s.Trim();
         }
 
-        var remote = await Proc.Run("git", path, ["remote", "get-url", "origin"]);
+        var remote = await Proc.Run("git", path, [.. SafeGit, "remote", "get-url", "origin"]);
         var slug = remote.Code == 0 ? Parse.GitHubSlug(remote.Out) : null;
 
         return new(path, name, git, last, subject, slug, handoff, handoffPath, handoffTime);

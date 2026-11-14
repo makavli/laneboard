@@ -1,44 +1,86 @@
-# Laneboard
+<p align="center">
+  <img src="docs/icon.png" width="88" alt="">
+</p>
 
-Every project you're working on, at a glance: a native Windows 11 app that lives in the notification area.
+<h1 align="center">Laneboard</h1>
 
-- Finds every Git repository in the folders you choose (two levels deep)
-- Shows the branch, uncommitted changes, commits to push or pull, the last commit, and the first lines of a `HANDOFF.md` note (with a SAFE POINT badge)
-- Updates by itself a moment after a file changes in a repository: no refresh button needed
-- Shows open pull requests and their checks, repository visibility, and self-hosted runners, all read through your own GitHub CLI (`gh`)
-- Shows this month's GitHub Actions minutes, and how much of your plan's free allowance they used once it has watched a whole month (GitHub counts each run by whether its repository was public then; Laneboard notes that daily). Click it for GitHub's billing page
-- Warns about a public repository with a self-hosted runner, and about GitHub Actions billing you money
-- Notifies you (Windows notifications, can be turned off) when checks fail or pass, a new SAFE POINT is written,
-  or a runner goes offline; a red dot on the tray icon while a project has a problem; projects that need you come first
-- Pin projects to the top (right click > Pin to top); choose how often GitHub is read (2 to 30 minutes)
-- Two views (Light rows or Advanced cards), System/Light/Dark themes, and a glass-to-solid background
-- Keyboard first: type to filter at once, Down into the list, arrows between projects, Enter opens one (VS Code or the folder),
-  the menu key or Shift+F10 opens its menu, F5 refreshes, Esc closes. Every button has a name a screen reader can say
-- Opens like a Windows flyout, next to the taskbar on the monitor you clicked, sliding in unless Windows animations are off
-- Read-only: it never writes to a repository (`git --no-optional-locks`), stores no token, and sends nothing anywhere except `gh` calls
+<p align="center">
+  Every project you're working on, at a glance.<br>
+  A native Windows 11 app in the notification area: branches, changes, pull requests, checks and handoff notes
+  for every Git repository on your PC, one click away.
+</p>
 
-Free to use, free to run: no account, no server, no telemetry ([PRIVACY.md](PRIVACY.md)). Progress: [ROADMAP.md](ROADMAP.md).
+<p align="center">
+  <img src="docs/laneboard.gif" width="420" alt="Laneboard's flyout: a light list of projects, then full cards with pull requests and checks, then the settings and the dark theme">
+</p>
 
-## Build
+## What it shows
+
+- **Every Git repository** in the folders you choose (two levels deep): the branch, uncommitted changes, commits
+  to push or pull, the last commit.
+- **Pull requests and their checks**, repository visibility and self-hosted runners, read through your own
+  [GitHub CLI](https://cli.github.com) (`gh`). Without it, Laneboard works offline with local data only.
+- **Handoff notes**: the first lines of a project's `HANDOFF.md`, with a *Safe point* badge when the note says
+  `SAFE POINT`, handy when you (or an AI coding agent) leave a project in a known good state.
+- **What needs you comes first**: failing checks, warnings and new safe points sit at the top, the tray icon gets a
+  red dot, and a Windows notification tells you what changed (you can turn notifications off).
+- **GitHub Actions minutes** this month, and how much of your plan's free allowance they used. Click the chip for
+  GitHub's billing page.
+- **Warnings that matter**: a public repository with a self-hosted runner, or GitHub Actions starting to bill you.
+
+<p align="center">
+  <img src="docs/screenshot-light.png" width="49%" alt="The light view on a light desktop">
+  <img src="docs/screenshot-advanced.png" width="49%" alt="The advanced cards in the dark theme">
+</p>
+
+## How it feels
+
+- Opens like a Windows flyout, next to the taskbar on the monitor you clicked, and updates a moment after a file
+  changes: no refresh button needed.
+- Two views (light rows or full cards), System, Light or Dark theme, and a glass-to-solid background.
+- Keyboard first: type to filter, arrows to move, Enter opens the project (VS Code or the folder), the menu key opens
+  its menu, F5 refreshes, Esc closes. Every control has a name a screen reader can say.
+- Pin projects to the top, hide the ones you don't care about, and choose how often GitHub is read (2 to 30 minutes).
+
+## Private by design
+
+Read-only: Laneboard never writes to your repositories, stores no token, has no account, no server and no
+telemetry. Its only network calls are the `gh` commands it runs under your own sign-in. Details: [PRIVACY.md](PRIVACY.md).
+
+## Get it
+
+A Microsoft Store release and a ready-made download are on the way ([ROADMAP.md](ROADMAP.md)). Until then, build it:
+Windows 10 or 11, [Git](https://git-scm.com), the [.NET 10 SDK](https://dotnet.microsoft.com/download), and
+optionally the GitHub CLI.
 
 ```bash
-bash tools/check.sh      # tests + build/app/Laneboard.exe (single file, self-contained) + demo snapshots + the MSIX
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/live_check.ps1   # the real exe on a throwaway repo
+git clone https://github.com/makavli/laneboard && cd laneboard
+bash tools/check.sh          # tests, then build/app/Laneboard.exe (one self-contained file) and the Store package
+./build/app/Laneboard.exe    # first run: pick the folders that hold your projects
 ```
 
-The gate also builds the Microsoft Store package, `dist/Laneboard-<version>-x64.msix`, and the Store screenshots in
-`dist/store/` (`store/build_msix.sh`, needs the free Windows SDK). Packaged, Laneboard starts with Windows through the
-package's startup task and shows notifications under the package's name; `Laneboard.exe` in a terminal runs it with
-arguments. To try it with Developer Mode on:
+## Develop
+
+```bash
+bash tools/check.sh                                                          # the whole local gate
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/live_check.ps1     # the real exe on a throwaway repository
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/make_gif.ps1       # films docs/laneboard.gif from the demo
+./build/app/Laneboard.exe --demo                                             # made-up projects, beside your own copy
+./build/app/Laneboard.exe --snapshot out.png --demo [--theme light|dark] [--view light|advanced] [--settings]
+```
+
+The gate also builds the Microsoft Store package `dist/Laneboard-<version>-x64.msix` and the Store screenshots
+(`store/build_msix.sh`, needs the free Windows SDK). Packaged, Laneboard starts with Windows through the package's
+startup task and shows notifications under the package's name. To try the package with Developer Mode on:
 
 ```bash
 powershell -Command "Add-AppxPackage -Register build/store/layout/AppxManifest.xml"
-LIVE_PACKAGE=1 powershell -NoProfile -ExecutionPolicy Bypass -File tools/live_check.ps1   # also flips the startup task
-powershell -Command "Get-AppxPackage Laneboard* | Remove-AppxPackage"   # before the next build empties build/store
+LIVE_PACKAGE=1 powershell -NoProfile -ExecutionPolicy Bypass -File tools/live_check.ps1
+powershell -Command "Get-AppxPackage Laneboard* | Remove-AppxPackage"   # before the next build
 ```
 
-Needs the .NET 10 SDK. The exe is also copied to `dist/` when no copy is running from there.
-`python tools/make_icon.py` (Pillow) redraws the icon. Errors go to `%LOCALAPPDATA%\Laneboard\laneboard.log`.
+Errors go to `%LOCALAPPDATA%\Laneboard\laneboard.log`.
 
-`Laneboard.exe --snapshot out.png --demo [--theme light|dark] [--view light|advanced] [--solidity 0-100] [--settings]`
-renders the window to a PNG without showing it.
+## License
+
+[MIT](LICENSE)

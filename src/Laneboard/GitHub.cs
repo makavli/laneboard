@@ -57,13 +57,16 @@ public static class GitHub
         return map;
     }
 
-    public static async Task<AccountInfo> Account(VisibilityLog visibility)
+    /// Null when GitHub couldn't be reached (offline, timed out): the caller keeps what it knew.
+    public static async Task<AccountInfo?> Account(VisibilityLog visibility)
     {
         var u = await Proc.Run("gh", null, ["api", "user", "-q", ".login + \" \" + (.plan.name // \"\")"]);
         if (u.Code == -1) return new(false, false, null, null, null, false);
         var parts = u.Out.Trim().Split(' ');
         var login = parts[0];
-        if (u.Code != 0 || !Safe.IsMatch(login)) return new(true, false, null, null, null, false);
+        if (u.Code != 0)
+            return (u.Out + u.Err).Contains("auth login") || u.Err.Contains("401") ? new(true, false, null, null, null, false) : null;
+        if (!Safe.IsMatch(login)) return new(true, false, null, null, null, false);
 
         var now = DateTime.Now;
         // shortcut: personal accounts on GitHub's billing platform only; organisation billing is not read.
