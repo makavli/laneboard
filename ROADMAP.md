@@ -11,6 +11,7 @@ Free to make, free to use: everything runs on the user's PC, no server, no accou
 | 0.5 Ship-ready | done | MSIX with a startup task and a command alias · Store screenshots · privacy text |
 | 0.6 Public | done | README GIF and screenshots · security audit and bug fixes · MIT license · public repository |
 | 1.0 | done | CI on every pull request · each new version released with a ready-made download |
+| 1.0.1 | done | A folder can't make Laneboard run its commands: repo-defined filters and gpg.program, a ';' in a folder name, a powershell.exe inside the folder |
 | Later | parked | Store listing images · Microsoft Store |
 
 Out of scope, on purpose: anything that needs a server (team views, sync between PCs).

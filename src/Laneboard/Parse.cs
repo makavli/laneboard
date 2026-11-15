@@ -49,6 +49,18 @@ public static class Parse
         return m.Success ? $"{m.Groups[1].Value}/{m.Groups[2].Value}" : null;
     }
 
+    /// `git config --show-scope -z` prints "scope\0key\nvalue\0" per entry. The first key the repo itself sets (local or
+    /// worktree scope) that the system or global config doesn't set to the same value, else null: Git for Windows'
+    /// system config already holds the LFS filter, and clones that repeat it locally stay readable.
+    public static string? PlantedCommand(string z)
+    {
+        var p = z.Split('\0');
+        var entries = Enumerable.Range(0, p.Length / 2).Select(i => (Scope: p[2 * i], Entry: p[2 * i + 1])).ToList();
+        var trusted = entries.Where(e => e.Scope is "system" or "global").Select(e => e.Entry).ToHashSet();
+        return entries.Where(e => e.Scope is not ("system" or "global" or "command") && !trusted.Contains(e.Entry))
+            .Select(e => e.Entry.Split('\n')[0]).FirstOrDefault();
+    }
+
     static readonly Regex ListMarker = new(@"^([-*+]|\d+[.)])\s+");
     static readonly Regex MdLink = new(@"\[([^\]]+)\]\([^)]*\)");
 
