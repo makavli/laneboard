@@ -34,7 +34,8 @@ public static class Scanner
 
     // A folder the user didn't clone (an unpacked archive) brings its own .git/config: never let it run a command.
     // --no-optional-locks: never take index.lock, so we cannot collide with the user's own git commands.
-    static readonly string[] SafeGit = ["-c", "core.fsmonitor=false", "--no-optional-locks"];
+    // log.showSignature: a planted gpg.program would run on `git log`. Filters are checked in Read.
+    static readonly string[] SafeGit = ["-c", "core.fsmonitor=false", "-c", "log.showSignature=false", "--no-optional-locks"];
 
     static bool IsRepo(string d) => Directory.Exists(Path.Combine(d, ".git")) || File.Exists(Path.Combine(d, ".git"));
 
@@ -56,7 +57,15 @@ public static class Scanner
         if (!Directory.Exists(path))
             return new(path, name, new("?", 0, 0, 0, false), null, null, null, null, null, null, "Folder not found: it was moved or deleted.");
         var (handoff, handoffPath, handoffTime) = ReadHandoff(path);
-        var st = await Proc.Run("git", path, [.. SafeGit, "status", "--porcelain=v2", "--branch"]);
+        // git status runs a filter's clean command on every file it re-reads; a planted one would run as the user.
+        var cfg = await Proc.Run("git", path, [.. SafeGit, "config", "--show-scope", "-z", "--get-regexp", @"^(filter\..*\.(clean|process)|lfs\.extension\..*)$"]);
+        // 1 = no match; -1 = no git, said below. Anything else (a timeout, a broken config) must not skip the check.
+        var refused = cfg.Code is not (0 or 1 or -1) ? "git could not list its config"
+            : Parse.PlantedCommand(cfg.Out) is { } key ? $"its own git config adds a command ({key})" : null;
+        if (refused != null)
+            return new(path, name, new("?", 0, 0, 0, false), null, null, null, handoff, handoffPath, handoffTime, $"Not read: {refused}.");
+        // dirty: never step into submodules, whose own config is not checked.
+        var st = await Proc.Run("git", path, [.. SafeGit, "status", "--porcelain=v2", "--branch", "--ignore-submodules=dirty"]);
         if (st.Code == -1)
             return new(path, name, new("?", 0, 0, 0, false), null, null, null, handoff, handoffPath, handoffTime, "Git not found: install Git for Windows.");
         if (st.Code != 0)

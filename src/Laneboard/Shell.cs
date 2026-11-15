@@ -21,11 +21,15 @@ public static class Shell
     public static void Terminal(string dir)
     {
         var wt = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps", "wt.exe");
-        var psi = File.Exists(wt)
-            ? new ProcessStartInfo(wt) { ArgumentList = { "-d", dir }, UseShellExecute = false }
-            : new ProcessStartInfo("powershell.exe") { ArgumentList = { "-NoExit" }, WorkingDirectory = dir, UseShellExecute = true };
-        try { Process.Start(psi)?.Dispose(); } catch (System.ComponentModel.Win32Exception) { }
+        try { Process.Start(TerminalStart(dir, wt))?.Dispose(); } catch (System.ComponentModel.Win32Exception) { }
     }
+
+    /// wt.exe splits its command line on ';' (a folder named "x;new-tab cmd" would start cmd), and reads "\;" as a plain ';'.
+    /// Without Windows Terminal: PowerShell by its full path, so no powershell.exe inside the folder can stand in for it.
+    public static ProcessStartInfo TerminalStart(string dir, string wt) => File.Exists(wt)
+        ? new ProcessStartInfo(wt) { ArgumentList = { "-d", dir.Replace(";", @"\;") }, UseShellExecute = false }
+        : new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+            { ArgumentList = { "-NoExit" }, WorkingDirectory = dir, UseShellExecute = false };
 
     static readonly Lazy<string?> CodePath = new(() =>
     {

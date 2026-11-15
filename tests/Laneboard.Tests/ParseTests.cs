@@ -15,6 +15,21 @@ public class ParseTests
     }
 
     [Fact]
+    public void A_repos_own_command_is_planted_unless_system_or_global_config_sets_the_same()
+    {
+        const string sys = "system\0filter.lfs.clean\ngit-lfs clean -- %f\0";
+        Assert.Null(Parse.PlantedCommand(sys + "local\0filter.lfs.clean\ngit-lfs clean -- %f\0"));
+        Assert.Equal("filter.lfs.clean", Parse.PlantedCommand(sys + "local\0filter.lfs.clean\nevil\0"));
+        // A value whose first line matches the system one still differs as a whole.
+        Assert.Equal("filter.lfs.clean", Parse.PlantedCommand(sys + "local\0filter.lfs.clean\ngit-lfs clean -- %f\nevil\0"));
+        Assert.Equal("filter.x.process", Parse.PlantedCommand("worktree\0filter.x.process\nevil\0"));
+        Assert.Equal("lfs.extension.e.clean", Parse.PlantedCommand("local\0lfs.extension.e.clean\nevil %f\0"));
+        Assert.Equal("filter.x.clean", Parse.PlantedCommand("local\0filter.x.clean\0")); // a key with no value
+        Assert.Null(Parse.PlantedCommand("global\0filter.x.clean\nmine\0command\0filter.y.clean\nx\0"));
+        Assert.Null(Parse.PlantedCommand(""));
+    }
+
+    [Fact]
     public void Porcelain_detached_and_no_upstream()
     {
         var s = Parse.PorcelainV2("# branch.oid abc\r\n# branch.head (detached)\r\n");
